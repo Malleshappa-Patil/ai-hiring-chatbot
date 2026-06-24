@@ -65,3 +65,5 @@ secrets/
 .pytest_cache/
 .coverage
 htmlcov/
+
+agentic-workflow.md
