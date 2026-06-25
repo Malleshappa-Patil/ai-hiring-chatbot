@@ -1,26 +1,58 @@
 """
-Sourcing Agent for the Hiring Workflow.
-Simulates publishing the job to LinkedIn/Indeed and finding initial candidates.
+Sourcing Agent — Step 4 from agentic-workflow.md.
+Posts the approved JD to all configured job platforms (mocked).
+Platforms: LinkedIn, Naukri, Wellfound, Indeed, Company Career Portal.
 """
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import SystemMessage
-from backend.config import settings
+import random
+from datetime import datetime
 from backend.workflows.state import HiringState
 
-llm = ChatGoogleGenerativeAI(
-    model=settings.GEMINI_MODEL,
-    temperature=0.2,
-    google_api_key=settings.GOOGLE_API_KEY
-)
+# Mock platform posting simulation
+PLATFORMS = [
+    "LinkedIn",
+    "Naukri",
+    "Wellfound",
+    "Indeed",
+    "Company Career Portal"
+]
+
+
+def _mock_post_to_platform(platform: str, jd_content: str, job_title: str) -> dict:
+    """
+    Simulate posting JD to a job platform.
+    Returns a mock result with posting ID and URL.
+    """
+    mock_id = f"{platform[:3].upper()}-{random.randint(10000, 99999)}"
+    return {
+        "platform": platform,
+        "status": "published",
+        "posting_id": mock_id,
+        "url": f"https://{platform.lower().replace(' ', '')}.com/jobs/{mock_id}",
+        "posted_at": datetime.utcnow().isoformat(),
+        "job_title": job_title,
+    }
+
 
 def sourcing_node(state: HiringState) -> dict:
-    """The Sourcing node that publishes the job and simulates sourcing."""
-    
-    # In a real app, this agent would use tools to post to LinkedIn/Indeed APIs.
-    # We simulate this behavior for the prototype.
-    
-    # Advance the step index so supervisor knows we finished
+    """
+    Sourcing Agent — Step 4 from agentic-workflow.md.
+    Posts the approved JD to all job platforms.
+    """
+    jd_content = state.get("jd_content", "")
+    hiring_req = state.get("hiring_request", {})
+    job_title = hiring_req.get("job_title", "Open Position")
+
+    print(f"[Sourcing Agent] Posting JD for '{job_title}' to {len(PLATFORMS)} platforms...")
+
+    posting_results = {}
+    for platform in PLATFORMS:
+        result = _mock_post_to_platform(platform, jd_content, job_title)
+        posting_results[platform] = result
+        print(f"  ✅ Posted to {platform}: {result['url']}")
+
     return {
-        "current_step_index": state.get("current_step_index", 0) + 1,
-        "agent_statuses": {"sourcing": "completed"}
+        "posting_status": posting_results,
+        "agent_statuses": {"sourcing": "completed"},
+        # After posting, we wait (simulated) then monitor applications
+        "next_action": "monitoring",
     }
