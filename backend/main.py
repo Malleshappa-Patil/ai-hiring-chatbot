@@ -71,6 +71,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 from backend.api.v1 import auth, jobs, candidates, workflow, interviews, onboarding, analytics  # noqa: E402
+from backend.api.v1 import chatbot  # noqa: E402
 
 app.include_router(auth.router,        prefix=settings.API_PREFIX, tags=["Authentication"])
 app.include_router(jobs.router,        prefix=settings.API_PREFIX, tags=["Jobs"])
@@ -79,6 +80,7 @@ app.include_router(workflow.router,    prefix=settings.API_PREFIX, tags=["Workfl
 app.include_router(interviews.router,  prefix=settings.API_PREFIX, tags=["Interviews"])
 app.include_router(onboarding.router,  prefix=settings.API_PREFIX, tags=["Onboarding"])
 app.include_router(analytics.router,   prefix=settings.API_PREFIX, tags=["Analytics"])
+app.include_router(chatbot.router,     prefix=settings.API_PREFIX, tags=["AI Chatbot"])
 
 
 # ── Health Check ──────────────────────────────────────────────────────────────

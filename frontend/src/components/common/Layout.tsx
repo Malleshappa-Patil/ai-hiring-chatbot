@@ -13,6 +13,7 @@ import {
   X,
   ChevronRight,
 } from 'lucide-react'
+import AIChatbot from '@/components/chatbot/AIChatbot'
 
 const NAV_ITEMS = [
   { to: '/dashboard',  label: 'Dashboard',         icon: LayoutDashboard },
@@ -178,6 +179,9 @@ export default function Layout() {
       >
         <Outlet />
       </main>
+
+      {/* ── AI Hiring Chatbot (Global Floating Panel) ─────────── */}
+      <AIChatbot />
     </div>
   )
 }

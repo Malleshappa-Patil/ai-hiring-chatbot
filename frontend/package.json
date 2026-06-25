@@ -21,6 +21,7 @@
     "react-dom": "^19.2.6",
     "react-hook-form": "^7.80.0",
     "react-hot-toast": "^2.6.0",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^7.18.0",
     "reactflow": "^11.11.4",
     "recharts": "^3.8.1",
