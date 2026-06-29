@@ -19,6 +19,7 @@ export interface ChatMessageResponse {
   hiring_request?: Record<string, unknown>;
   workflow_triggered: boolean;
   workflow_session_id?: string;
+  jd_content?: string;
 }
 
 export interface SessionHistory {

@@ -21,7 +21,6 @@ Generate a professional, compelling Job Description for the following hiring req
 
 Hiring Details:
 - Job Title: {job_title}
-- Department: {department}
 - Required Skills & Technologies: {skills}
 - Experience Required: {experience}
 - Budget/Salary Range: {budget}
@@ -88,7 +87,6 @@ def jd_generation_node(state: HiringState) -> dict:
         print(f"[JD Agent] Generating initial JD for: {hiring_req.get('job_title', 'Unknown Role')}")
         prompt = JD_INITIAL_PROMPT.format(
             job_title=hiring_req.get("job_title", "Software Engineer"),
-            department=hiring_req.get("department", "Engineering"),
             skills=", ".join(hiring_req.get("skills_required", [])) or "Not specified",
             experience=hiring_req.get("experience_years", "3-5 years"),
             budget=hiring_req.get("budget", "Competitive"),
@@ -99,7 +97,7 @@ def jd_generation_node(state: HiringState) -> dict:
         )
 
     try:
-        response = llm.invoke([SystemMessage(content=prompt)])
+        response = llm.invoke(prompt)
         jd_content = response.content.strip()
     except Exception as e:
         print(f"[JD Agent] LLM error: {e}")

@@ -73,7 +73,7 @@ def offer_management_node(state: HiringState) -> dict:
                 budget=budget,
                 location=location,
             )
-            response = llm.invoke([SystemMessage(content=prompt)])
+            response = llm.invoke(prompt)
             offer_content = response.content.strip()
         except Exception as e:
             print(f"  [Offer] Error generating offer for {candidate_name}: {e}")

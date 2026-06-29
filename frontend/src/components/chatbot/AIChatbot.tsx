@@ -10,8 +10,10 @@ import {
   CheckCircle,
   Workflow,
   MessageSquare,
+  Download,
 } from 'lucide-react'
 import { chatbotApi } from '@/api/chatbot'
+import { apiClient } from '@/api/client'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface LocalMessage {
@@ -91,6 +93,21 @@ const styles = {
     borderTop: '1px solid rgba(99,102,241,0.15)',
     background: 'rgba(255,255,255,0.02)',
     flexShrink: 0,
+  },
+  downloadBtn: {
+    padding: '6px 14px',
+    background: 'rgba(99,102,241,0.15)',
+    border: '1px solid rgba(99,102,241,0.3)',
+    borderRadius: '20px',
+    color: '#a5b4fc',
+    fontSize: '11px',
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    transition: 'all 0.15s ease',
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: '6px',
   },
 }
 
@@ -180,9 +197,9 @@ function MessageBubble({ message }: { message: LocalMessage }) {
 // ── Step progress indicator ────────────────────────────────────────────────────
 function StepBadge({ step }: { step: string }) {
   const stepLabels: Record<string, { label: string; color: string }> = {
+    collect_details: { label: 'Collecting Details', color: '#818cf8' },
     collect_job_title_and_skills: { label: 'Job Details', color: '#818cf8' },
     collect_experience: { label: 'Experience', color: '#818cf8' },
-    collect_department: { label: 'Department', color: '#818cf8' },
     collect_location: { label: 'Location', color: '#818cf8' },
     collect_budget: { label: 'Budget', color: '#818cf8' },
     collect_additional_requirements: { label: 'Requirements', color: '#818cf8' },
@@ -228,8 +245,9 @@ export default function AIChatbot() {
   const [currentStep, setCurrentStep] = useState('greeting')
   const [workflowTriggered, setWorkflowTriggered] = useState(false)
   const [hasUnread, setHasUnread] = useState(false)
+  const [jdContent, setJdContent] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -238,6 +256,39 @@ export default function AIChatbot() {
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
+
+  // Restore chatbot session on mount
+  useEffect(() => {
+    const initSession = async () => {
+      const savedSessionId = localStorage.getItem('hiring_chatbot_session_id')
+      if (savedSessionId) {
+        try {
+          const session = await chatbotApi.getSession(savedSessionId)
+          setSessionId(session.session_id)
+          setCurrentStep(session.step)
+          if (session.jd_content) {
+            setJdContent(session.jd_content)
+          }
+          if (session.step === 'complete' || session.workflow_session_id) {
+            setWorkflowTriggered(true)
+          }
+          
+          // Map messages
+          const mapped = session.messages.map((m: any, idx: number) => ({
+            id: `msg-saved-${idx}-${Date.now()}`,
+            role: m.role,
+            content: m.content,
+            timestamp: new Date(m.timestamp)
+          }))
+          setMessages(mapped)
+        } catch (err) {
+          console.error("Failed to restore chatbot session", err)
+          localStorage.removeItem('hiring_chatbot_session_id')
+        }
+      }
+    }
+    initSession()
+  }, [])
 
   useEffect(() => {
     if (isOpen) {
@@ -273,6 +324,7 @@ export default function AIChatbot() {
       try {
         const session = await chatbotApi.startSession()
         setSessionId(session.session_id)
+        localStorage.setItem('hiring_chatbot_session_id', session.session_id)
         setCurrentStep(session.step)
         removeTypingIndicator(typingId)
         addMessage('assistant', session.welcome_message)
@@ -307,6 +359,10 @@ export default function AIChatbot() {
       addMessage('assistant', response.bot_message)
       setCurrentStep(response.step)
 
+      if (response.jd_content) {
+        setJdContent(response.jd_content)
+      }
+
       if (response.workflow_triggered) {
         setWorkflowTriggered(true)
       }
@@ -320,84 +376,59 @@ export default function AIChatbot() {
     }
   }
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter') {
+      if (e.shiftKey) {
+        // Shift + Enter is allowed to make a newline in textarea
+      } else {
+        e.preventDefault()
+        handleSend()
+      }
+    }
+  }
+
+  const downloadPDF = async () => {
+    if (!sessionId) return
+    try {
+      const response = await apiClient.get(`/chatbot/session/${sessionId}/download-jd/pdf`, {
+        responseType: 'blob',
+      })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `JD_${sessionId.substring(0, 8)}.pdf`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("PDF download failed", err)
+    }
+  }
+
+  const downloadDOCX = async () => {
+    if (!sessionId) return
+    try {
+      const response = await apiClient.get(`/chatbot/session/${sessionId}/download-jd/doc`, {
+        responseType: 'blob',
+      })
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement('a')
+      link.href = url
+      link.setAttribute('download', `JD_${sessionId.substring(0, 8)}.docx`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error("Word download failed", err)
     }
   }
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* ── Global CSS ──────────────────────────────────────────────────────── */}
-      <style>{`
-        @keyframes chatPulse {
-          0%, 100% { box-shadow: 0 4px 24px rgba(99,102,241,0.5), 0 0 0 0 rgba(99,102,241,0.4); }
-          50% { box-shadow: 0 4px 32px rgba(99,102,241,0.7), 0 0 0 8px rgba(99,102,241,0); }
-        }
-        @keyframes typingDot {
-          0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
-          30% { transform: translateY(-5px); opacity: 1; }
-        }
-        @keyframes messageSlideIn {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes panelSlideIn {
-          from { transform: translateX(100%); opacity: 0; }
-          to { transform: translateX(0); opacity: 1; }
-        }
-        .chat-panel-open {
-          animation: panelSlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
-        }
-        .chat-messages::-webkit-scrollbar {
-          width: 4px;
-        }
-        .chat-messages::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .chat-messages::-webkit-scrollbar-thumb {
-          background: rgba(99,102,241,0.3);
-          border-radius: 2px;
-        }
-        .chat-markdown p { margin: 0 0 8px 0; }
-        .chat-markdown p:last-child { margin-bottom: 0; }
-        .chat-markdown ul, .chat-markdown ol { margin: 6px 0 8px 16px; padding: 0; }
-        .chat-markdown li { margin-bottom: 3px; }
-        .chat-markdown strong { color: #c4b5fd; font-weight: 600; }
-        .chat-markdown em { color: #a5b4fc; }
-        .chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { 
-          color: #e2e8f0; 
-          margin: 10px 0 6px 0; 
-          font-size: 13px;
-          font-weight: 700;
-        }
-        .chat-markdown hr {
-          border: none;
-          border-top: 1px solid rgba(99,102,241,0.2);
-          margin: 10px 0;
-        }
-        .chat-markdown code {
-          background: rgba(99,102,241,0.15);
-          padding: 1px 5px;
-          border-radius: 4px;
-          font-size: 12px;
-        }
-        .chat-input:focus {
-          outline: none;
-          border-color: rgba(99,102,241,0.6) !important;
-          box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
-        }
-        .send-btn:hover:not(:disabled) {
-          background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
-          transform: scale(1.05);
-        }
-        .trigger-btn:hover {
-          transform: translateY(-2px) scale(1.02);
-          box-shadow: 0 8px 32px rgba(99,102,241,0.6) !important;
-        }
-      `}</style>
+      {/* Styles moved to the bottom of the file to completely solve typing lag */}
 
       {/* ── Trigger Button ───────────────────────────────────────────────────── */}
       {!isOpen && (
@@ -592,9 +623,26 @@ export default function AIChatbot() {
               </div>
             )}
 
+            {/* Download Options (PDF and DOCX both) */}
+            {jdContent && (
+              <div style={{
+                display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center'
+              }}>
+                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>Download:</span>
+                <button onClick={downloadPDF} style={styles.downloadBtn}>
+                  <Download size={12} />
+                  PDF Format
+                </button>
+                <button onClick={downloadDOCX} style={styles.downloadBtn}>
+                  <Download size={12} />
+                  Word (DOCX)
+                </button>
+              </div>
+            )}
+
             {/* Input row */}
             <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
-              <input
+              <textarea
                 ref={inputRef}
                 className="chat-input"
                 value={inputValue}
@@ -603,7 +651,7 @@ export default function AIChatbot() {
                 placeholder={
                   currentStep === 'complete'
                     ? 'Workflow is running...'
-                    : 'Type your message...'
+                    : 'Type your message (Shift+Enter for newline)...'
                 }
                 disabled={isLoading || currentStep === 'complete'}
                 style={{
@@ -617,6 +665,8 @@ export default function AIChatbot() {
                   fontFamily: 'Inter, system-ui, sans-serif',
                   transition: 'border-color 0.2s, box-shadow 0.2s',
                   resize: 'none' as const,
+                  height: '42px',
+                  lineHeight: '1.4',
                 }}
               />
               <button
@@ -656,11 +706,80 @@ export default function AIChatbot() {
               color: '#334155',
               textAlign: 'center' as const,
             }}>
-              Powered by Gemini AI • Press Enter to send
+              Powered by Gemini AI • Shift+Enter for newline
             </div>
           </div>
         </div>
       )}
+      
+      {/* ── Global CSS (Rendered statically outside the component to eliminate typing lag) ── */}
+      <style>{`
+        @keyframes chatPulse {
+          0%, 100% { box-shadow: 0 4px 24px rgba(99,102,241,0.5), 0 0 0 0 rgba(99,102,241,0.4); }
+          50% { box-shadow: 0 4px 32px rgba(99,102,241,0.7), 0 0 0 8px rgba(99,102,241,0); }
+        }
+        @keyframes typingDot {
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+          30% { transform: translateY(-5px); opacity: 1; }
+        }
+        @keyframes messageSlideIn {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes panelSlideIn {
+          from { transform: translateX(100%); opacity: 0; }
+          to { transform: translateX(0); opacity: 1; }
+        }
+        .chat-panel-open {
+          animation: panelSlideIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+        .chat-messages::-webkit-scrollbar {
+          width: 4px;
+        }
+        .chat-messages::-webkit-scrollbar-track {
+          background: transparent;
+        }
+        .chat-messages::-webkit-scrollbar-thumb {
+          background: rgba(99,102,241,0.3);
+          border-radius: 2px;
+        }
+        .chat-markdown p { margin: 0 0 8px 0; }
+        .chat-markdown p:last-child { margin-bottom: 0; }
+        .chat-markdown ul, .chat-markdown ol { margin: 6px 0 8px 16px; padding: 0; }
+        .chat-markdown li { margin-bottom: 3px; }
+        .chat-markdown strong { color: #c4b5fd; font-weight: 600; }
+        .chat-markdown em { color: #a5b4fc; }
+        .chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { 
+          color: #e2e8f0; 
+          margin: 10px 0 6px 0; 
+          font-size: 13px;
+          font-weight: 700;
+        }
+        .chat-markdown hr {
+          border: none;
+          border-top: 1px solid rgba(99,102,241,0.2);
+          margin: 10px 0;
+        }
+        .chat-markdown code {
+          background: rgba(99,102,241,0.15);
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-size: 12px;
+        }
+        .chat-input:focus {
+          outline: none;
+          border-color: rgba(99,102,241,0.6) !important;
+          box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+        }
+        .send-btn:hover:not(:disabled) {
+          background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
+          transform: scale(1.05);
+        }
+        .trigger-btn:hover {
+          transform: translateY(-2px) scale(1.02);
+          box-shadow: 0 8px 32px rgba(99,102,241,0.6) !important;
+        }
+      `}</style>
     </>
   )
 }

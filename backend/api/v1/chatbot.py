@@ -1,7 +1,7 @@
 """
 AI Chatbot API Router — The conversational interface for the AI Hiring Chatbot.
 
-The chatbot guides HR/Recruiters through a step-by-step hiring request collection,
+The chatbot guides HR/Recruiters through hiring request collection,
 then triggers the full agentic workflow (agentic-workflow.md).
 
 Endpoints:
@@ -12,6 +12,7 @@ Endpoints:
 """
 import uuid
 import json
+import re
 from datetime import datetime
 from typing import Optional
 from fastapi import APIRouter, HTTPException
@@ -29,7 +30,7 @@ _sessions: dict = {}
 # Initialize LLM for chatbot
 llm = ChatGoogleGenerativeAI(
     model=settings.GEMINI_MODEL,
-    temperature=0.4,
+    temperature=0.3,
     google_api_key=settings.GOOGLE_API_KEY
 )
 
@@ -53,6 +54,7 @@ class ChatMessageResponse(BaseModel):
     hiring_request: Optional[dict] = None
     workflow_triggered: bool = False
     workflow_session_id: Optional[str] = None
+    jd_content: Optional[str] = None
 
 
 class JDApprovalRequest(BaseModel):
@@ -61,182 +63,386 @@ class JDApprovalRequest(BaseModel):
     feedback: Optional[str] = None
 
 
-# ── Chatbot Steps ──────────────────────────────────────────────────────────────
+# ── Required fields for a complete hiring request ─────────────────────────────
 
-STEPS = [
-    "greeting",
-    "collect_job_title_and_skills",  # Combined: job title + skills + technologies
-    "collect_experience",
-    "collect_department",
-    "collect_location",
-    "collect_budget",
-    "collect_candidates_needed",
-    "collect_additional_requirements",
-    "confirmation",
-    "jd_generation",
-    "jd_review",
-    "workflow_running",
-    "complete"
-]
-
-SYSTEM_PROMPT = """You are an expert AI Hiring Assistant at a tech company.
-Your role is to guide HR professionals and recruiters through setting up a complete hiring request.
-
-Current conversation context:
-{context}
-
-Current step: {step}
-Collected information so far: {collected_data}
-
-Guidelines:
-- Be professional yet friendly and encouraging
-- Keep responses concise (2-4 sentences)
-- Guide the user naturally to provide the specific information needed for the current step
-- If information is unclear, ask for clarification politely
-- Validate and acknowledge what the user provides
-- For the job_title_and_skills step: ask for job title AND the specific technologies/skills/stack required (e.g., "Python, FastAPI, PostgreSQL, AWS") AND number of candidates needed to hire
-- Extract structured information from natural language responses
-- When confirming, summarize all collected data clearly
-
-Step instructions:
-- greeting: Introduce yourself and ask what position they want to fill
-- collect_job_title_and_skills: Ask for job title + required skills/technologies + candidates needed count in one natural question
-- collect_experience: Ask for years of experience required
-- collect_department: Ask which department this role is in
-- collect_location: Ask about location/remote policy
-- collect_budget: Ask about salary budget/range
-- collect_additional_requirements: Ask for any other specific requirements
-- confirmation: Show a complete summary and ask for confirmation
-- jd_generation: Tell them JD is being generated
-- jd_review: Present the JD for review
-- workflow_running: Inform the workflow has started
-"""
+REQUIRED_FIELDS = {
+    "job_title":               "Job Title / Role",
+    "skills_required":         "Key Skills & Technologies",
+    "candidates_needed":       "Number of Positions",
+    "experience_years":        "Experience Required",
+    "location":                "Location / Remote Policy",
+    "budget":                  "Salary Budget / Range",
+}
 
 
-def _extract_data_from_message(step: str, message: str, session: dict) -> dict:
-    """Use LLM to extract structured data from user's natural language input."""
-    extract_prompt = f"""Extract the following from this message: "{message}"
+# ── Regex-based extraction (reliable fallback) ────────────────────────────────
 
-Current step: {step}
+def _regex_extract(message: str) -> dict:
+    """
+    Extract hiring fields using regex patterns.
+    This is the primary reliable extractor — no LLM hallucination possible.
+    """
+    result = {}
+    msg = message.strip()
+    msg_lower = msg.lower()
 
-For step "collect_job_title_and_skills":
-Extract: job_title, skills_required (as list), candidates_needed (as integer)
-Example output: {{"job_title": "Senior Backend Engineer", "skills_required": ["Python", "FastAPI", "PostgreSQL", "AWS", "Docker"], "candidates_needed": 3}}
+    # ── Job Title / Role ──────────────────────────────────────────────────
+    role_patterns = [
+        r'(?:role|job\s*title|position|hiring\s*for)\s*[:\-–—]\s*(.+?)(?:\n|,\s*(?:number|experience|skills|key|location|salary|budget|additional)|$)',
+        r'^(.+?)\s*(?:developer|engineer|architect|designer|manager|analyst|lead|specialist|consultant|scientist|admin)\b',
+    ]
+    for pat in role_patterns:
+        m = re.search(pat, msg, re.IGNORECASE)
+        if m:
+            title = m.group(1).strip().rstrip('.,;')
+            # If the match is the whole role phrase (e.g. "senior software developer")
+            if 'developer' in msg_lower or 'engineer' in msg_lower or 'architect' in msg_lower or 'designer' in msg_lower or 'manager' in msg_lower or 'analyst' in msg_lower or 'lead' in msg_lower or 'scientist' in msg_lower:
+                # Try to get the full title including the suffix
+                full_match = re.search(
+                    r'(?:role|job\s*title|position|hiring\s*for)\s*[:\-–—]\s*(.+?(?:developer|engineer|architect|designer|manager|analyst|lead|specialist|consultant|scientist|admin)\w*)',
+                    msg, re.IGNORECASE
+                )
+                if full_match:
+                    title = full_match.group(1).strip().rstrip('.,;')
+                else:
+                    # Maybe the whole message starts with the role
+                    full_match2 = re.search(
+                        r'((?:senior|junior|lead|staff|principal|mid|sr|jr)?\s*\w+\s+(?:developer|engineer|architect|designer|manager|analyst|lead|specialist|consultant|scientist))',
+                        msg, re.IGNORECASE
+                    )
+                    if full_match2:
+                        title = full_match2.group(1).strip()
+            if len(title) > 2:
+                result["job_title"] = title.title()
+            break
 
-For step "collect_experience":
-Extract: experience_years (as string like "3-5 years" or "5+ years")
-Example output: {{"experience_years": "3-5 years"}}
+    # ── Number of Positions / Candidates ──────────────────────────────────
+    candidates_patterns = [
+        r'(?:number\s*of\s*(?:positions?|candidates?|openings?|hires?)|positions?\s*(?:needed|required|to\s*(?:fill|hire)))\s*[:\-–—]?\s*(\d+)',
+        r'(?:need|hire|looking\s*for|want)\s+(\d+)\s+(?:candidates?|positions?|people|engineers?|developers?)',
+        r'(\d+)\s+(?:positions?|openings?|candidates?|hires?)',
+    ]
+    for pat in candidates_patterns:
+        m = re.search(pat, msg, re.IGNORECASE)
+        if m:
+            result["candidates_needed"] = int(m.group(1))
+            break
 
-For step "collect_department":
-Extract: department (as string)
-Example output: {{"department": "Engineering"}}
+    # ── Experience ────────────────────────────────────────────────────────
+    exp_patterns = [
+        r'(?:experience\s*(?:required|needed|level)?|exp)\s*[:\-–—]?\s*([\d]+[\s\-–—to]+[\d]+\s*(?:years?|yrs?|yr))',
+        r'(?:experience\s*(?:required|needed|level)?|exp)\s*[:\-–—]?\s*([\d]+\+?\s*(?:years?|yrs?|yr))',
+        r'([\d]+[\s\-–—to]+[\d]+\s*(?:years?|yrs?))\s*(?:of\s*)?(?:experience|exp)',
+        r'([\d]+\+?\s*(?:years?|yrs?))\s*(?:of\s*)?(?:experience|exp)',
+    ]
+    for pat in exp_patterns:
+        m = re.search(pat, msg, re.IGNORECASE)
+        if m:
+            result["experience_years"] = m.group(1).strip()
+            break
 
-For step "collect_location":
-Extract: location (as string)
-Example output: {{"location": "Remote / Bangalore"}}
+    # ── Skills / Technologies ─────────────────────────────────────────────
+    skills_patterns = [
+        r'(?:key\s*)?(?:skills?|tech(?:nologies|nical)?|stack|rechnologies)\s*(?:required|needed|and\s*(?:tech|rech)\w*)?\s*[:\-–—]\s*(.+?)(?:\n|,\s*(?:location|salary|budget|additional|experience|number)|\.?\s*$)',
+        r'(?:skills?|tech(?:nologies)?)\s*[:\-–—]\s*(.+?)(?:\.|$)',
+    ]
+    for pat in skills_patterns:
+        m = re.search(pat, msg, re.IGNORECASE)
+        if m:
+            raw = m.group(1).strip().rstrip('.,;')
+            # Split on common delimiters
+            skills = [s.strip().rstrip('.,;') for s in re.split(r'[,/\|]|\band\b', raw) if s.strip()]
+            # Filter out non-skill items and clean
+            cleaned_skills = []
+            for s in skills:
+                s = s.strip()
+                if len(s) > 1 and len(s) < 50:
+                    cleaned_skills.append(s)
+            if cleaned_skills:
+                result["skills_required"] = cleaned_skills
+            break
 
-For step "collect_budget":
-Extract: budget (as string)
-Example output: {{"budget": "₹15-25 LPA"}}
+    # ── Location ──────────────────────────────────────────────────────────
+    loc_patterns = [
+        r'(?:location|city|place|work\s*(?:location|from)|based\s*(?:in|at))\s*[:\-–—]\s*(.+?)(?:\n|,\s*(?:salary|budget|additional)|\.?\s*$)',
+        r'(?:location|city)\s*[:\-–—]\s*(.+?)(?:\.|,|$)',
+    ]
+    for pat in loc_patterns:
+        m = re.search(pat, msg, re.IGNORECASE)
+        if m:
+            loc = m.group(1).strip().rstrip('.,;')
+            if len(loc) > 1:
+                result["location"] = loc.title()
+            break
 
-For step "collect_candidates_needed":
-Extract: candidates_needed (as integer)
-Example output: {{"candidates_needed": 2}}
+    # ── Budget / Salary ───────────────────────────────────────────────────
+    budget_patterns = [
+        r'(?:salary|budget|compensation|pay|ctc|package|sal)\s*(?:range|budget)?\s*[:\-–—]\s*(.+?)(?:\n|,\s*(?:additional|location)|\.?\s*(?:go\s|start\s|$))',
+        r'((?:₹|rs\.?|inr|usd|\$)\s*[\d]+[\s\-–—to]+[\d]+\s*(?:lpa|lakhs?|lacs?|k|cr|crore)?)',
+        r'([\d]+\s*(?:to|-)\s*[\d]+\s*(?:lpa|lakhs?|lacs?|ctc|k))',
+    ]
+    for pat in budget_patterns:
+        m = re.search(pat, msg, re.IGNORECASE)
+        if m:
+            budget = m.group(1).strip().rstrip('.,;')
+            if len(budget) > 1:
+                result["budget"] = budget
+            break
 
-For step "collect_additional_requirements":
-Extract: additional_requirements (as string)
-Example output: {{"additional_requirements": "Preference for open source contributors"}}
+    # ── Additional Requirements ───────────────────────────────────────────
+    add_patterns = [
+        r'(?:additional\s*(?:requirements?|info|details?|notes?))\s*[:\-–—]\s*(.+?)(?:\n|$)',
+    ]
+    for pat in add_patterns:
+        m = re.search(pat, msg, re.IGNORECASE)
+        if m:
+            req = m.group(1).strip().rstrip('.,;')
+            if len(req) > 2:
+                result["additional_requirements"] = req
+            break
 
-Return ONLY the JSON object. No other text.
-"""
+    return result
+
+
+# ── LLM-based extraction (used as secondary approach) ─────────────────────────
+
+EXTRACT_PROMPT = """You are a strict data extraction assistant. Extract hiring-related fields from this message.
+
+STRICT RULES:
+1. ONLY extract values the user EXPLICITLY wrote. NEVER guess or infer.
+2. If a field is NOT mentioned, DO NOT include it.
+3. Return ONLY a JSON object.
+
+Fields to look for:
+- "job_title": string — the job role (e.g. "Senior Python Developer")
+- "skills_required": array of strings — technologies/skills (e.g. ["Python", "FastAPI", "AWS"])
+- "candidates_needed": integer — number of positions (e.g. 3)
+- "experience_years": string — experience needed (e.g. "5 years")
+- "location": string — work location (e.g. "Bengaluru")
+- "budget": string — salary range (e.g. "18-20 LPA CTC")
+- "additional_requirements": string — extra requirements
+
+User's message:
+"{message}"
+
+Return ONLY valid JSON. No explanation."""
+
+
+def _llm_extract(message: str) -> dict:
+    """Use LLM to extract fields. Secondary to regex extraction."""
+    prompt = EXTRACT_PROMPT.format(message=message)
     try:
-        response = llm.invoke([SystemMessage(content=extract_prompt)])
+        response = llm.invoke(prompt)
         content = response.content.strip()
-        # Extract JSON
-        import re
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
         if json_match:
-            return json.loads(json_match.group())
+            extracted = json.loads(json_match.group())
+            cleaned = {}
+            for k, v in extracted.items():
+                if v is None:
+                    continue
+                if isinstance(v, str) and not v.strip():
+                    continue
+                if isinstance(v, list) and len(v) == 0:
+                    continue
+                cleaned[k] = v
+            return cleaned
     except Exception as e:
-        print(f"[Chatbot] Data extraction error: {e}")
+        print(f"[Chatbot] LLM extraction error: {e}")
     return {}
 
 
-def _get_next_step(current_step: str, session: dict) -> str:
-    """Get the next step in the conversation flow."""
-    step_order = [
-        "greeting",
-        "collect_job_title_and_skills",
-        "collect_experience",
-        "collect_department",
-        "collect_location",
-        "collect_budget",
-        "collect_additional_requirements",
-        "confirmation",
-        "jd_generation",
-        "jd_review",
-        "workflow_running",
-        "complete"
+def _extract_all_fields(message: str, existing_data: dict) -> dict:
+    """
+    Extract all hiring fields from a user message.
+    Uses regex first (reliable, no hallucination), then fills gaps with LLM.
+    """
+    # Step 1: Regex extraction (primary — deterministic, no hallucination)
+    regex_result = _regex_extract(message)
+    print(f"[Chatbot] Regex extracted: {regex_result}")
+
+    # Step 2: LLM extraction (secondary — fills gaps regex missed)
+    llm_result = _llm_extract(message)
+    print(f"[Chatbot] LLM extracted: {llm_result}")
+
+    # Merge: regex takes priority, LLM fills gaps
+    merged = {}
+    all_keys = set(list(regex_result.keys()) + list(llm_result.keys()))
+    for key in all_keys:
+        if key in regex_result:
+            merged[key] = regex_result[key]
+        elif key in llm_result:
+            merged[key] = llm_result[key]
+
+    # Don't overwrite existing data with new extraction unless it's a new field
+    final = {}
+    for key, val in merged.items():
+        if key not in existing_data or not existing_data.get(key):
+            final[key] = val
+        elif key in existing_data:
+            # Only overwrite if the user explicitly mentioned it again
+            # (we assume they did if it was extracted)
+            final[key] = val
+
+    print(f"[Chatbot] Final merged extraction: {final}")
+    return final
+
+
+# ── Field checking ─────────────────────────────────────────────────────────────
+
+def _get_missing_required_fields(hiring_request: dict) -> dict:
+    """Return dict of {field_key: human_label} for required fields still missing."""
+    missing = {}
+    for field_key, label in REQUIRED_FIELDS.items():
+        val = hiring_request.get(field_key)
+        if val is None:
+            missing[field_key] = label
+        elif isinstance(val, str) and not val.strip():
+            missing[field_key] = label
+        elif isinstance(val, list) and len(val) == 0:
+            missing[field_key] = label
+    return missing
+
+
+def _user_wants_to_proceed(message: str) -> bool:
+    """Check if user is signaling they want to skip remaining fields and proceed."""
+    proceed_phrases = [
+        "go ahead", "start build", "build the jd", "generate jd", "generate the jd",
+        "create jd", "create the jd", "proceed", "that's it", "thats it",
+        "that's all", "thats all", "skip", "no more", "nothing else",
+        "none", "na", "nah", "n/a", "no additional", "no other",
+        "start the workflow", "kick off", "let's go", "lets go",
     ]
-    try:
-        idx = step_order.index(current_step)
-        return step_order[idx + 1] if idx + 1 < len(step_order) else "complete"
-    except ValueError:
-        return "complete"
+    msg_lower = message.lower().strip()
+    return any(phrase in msg_lower for phrase in proceed_phrases)
 
 
-def _generate_bot_response(session: dict, user_message: str) -> str:
-    """Generate a natural chatbot response based on current step and context."""
-    step = session.get("step", "greeting")
-    collected = session.get("hiring_request", {})
+# ── Summary builder ────────────────────────────────────────────────────────────
 
-    context = "\n".join([
-        f"{m['role'].upper()}: {m['content']}"
-        for m in session.get("messages", [])[-6:]  # Last 6 messages for context
-    ])
-
-    # Build prompt manually — do NOT use .format() here because json.dumps()
-    # produces curly braces {} which Python's str.format() mistakes for placeholders,
-    # causing a KeyError. Use string concatenation instead.
-    collected_data_str = json.dumps(collected, indent=2)
-    prompt = (
-        "You are an expert AI Hiring Assistant at a tech company.\n"
-        "Your role is to guide HR professionals and recruiters through setting up a complete hiring request.\n\n"
-        "Current conversation context:\n"
-        + context + "\n\n"
-        "Current step: " + step + "\n"
-        "Collected information so far:\n" + collected_data_str + "\n\n"
-        "Guidelines:\n"
-        "- Be professional yet friendly and encouraging\n"
-        "- Keep responses concise (2-4 sentences)\n"
-        "- Guide the user naturally to provide the specific information needed for the current step\n"
-        "- If information is unclear, ask for clarification politely\n"
-        "- Validate and acknowledge what the user provides\n"
-        "- For the job_title_and_skills step: ask for job title AND the specific technologies/skills/stack required AND number of candidates needed\n"
-        "- Extract structured information from natural language responses\n"
-        "- When confirming, summarize all collected data clearly\n\n"
-        "Step instructions:\n"
-        "- collect_job_title_and_skills: Acknowledge the job title and skills provided, then ask for years of experience required\n"
-        "- collect_experience: Ask which department this role is in\n"
-        "- collect_department: Ask about location/remote policy\n"
-        "- collect_location: Ask about salary budget/range\n"
-        "- collect_budget: Ask for any other specific requirements or press enter to skip\n"
-        "- collect_additional_requirements: Tell them you have everything and will show a summary\n"
-        "- confirmation: Show a complete summary and ask for confirmation\n"
-        "- jd_generation: Tell them JD is being generated\n"
-        "- jd_review: Present the JD for review and ask to approve or request changes\n"
-        "- workflow_running: Inform the workflow has started\n"
+def _build_summary(hr: dict) -> str:
+    """Build a markdown summary of the hiring request."""
+    skills = hr.get("skills_required", [])
+    skills_str = ", ".join(skills) if isinstance(skills, list) else str(skills) if skills else "Not specified"
+    return (
+        f"📋 **Hiring Request Summary**\n\n"
+        f"- **Job Title**: {hr.get('job_title', 'Not specified')}\n"
+        f"- **Skills & Technologies**: {skills_str}\n"
+        f"- **Experience**: {hr.get('experience_years', 'Not specified')}\n"
+        f"- **Location**: {hr.get('location', 'Not specified')}\n"
+        f"- **Budget/Salary**: {hr.get('budget', 'Not specified')}\n"
+        f"- **Candidates to Hire**: {hr.get('candidates_needed', 'Not specified')}\n"
+        f"- **Additional Requirements**: {hr.get('additional_requirements', 'None')}"
     )
 
+
+# ── JD generation ─────────────────────────────────────────────────────────────
+
+async def _generate_jd_in_session(session: dict) -> str:
+    """Generate a JD based on the hiring request and return it formatted for chat."""
+    hr = session.get("hiring_request", {})
+    skills = hr.get("skills_required", [])
+    skills_str = ", ".join(skills) if isinstance(skills, list) else str(skills) if skills else "Not specified"
+    feedback = hr.get("jd_feedback", "")
+
+    jd_prompt = f"""Generate a professional Job Description for:
+Job Title: {hr.get('job_title', 'Software Engineer')}
+Required Skills/Technologies: {skills_str}
+Experience: {hr.get('experience_years', '3+ years')}
+Budget: {hr.get('budget', 'Competitive')}
+Location: {hr.get('location', 'Remote')}
+Positions Available: {hr.get('candidates_needed', 1)}
+Additional Requirements: {hr.get('additional_requirements', 'None')}
+{f'Previous Feedback to Address: {feedback}' if feedback else ''}
+
+Create a complete, attractive JD with:
+1. Job Title & Overview
+2. Key Responsibilities (8-10 points)
+3. Required Skills & Technologies (match exactly what was specified)
+4. Good to Have Skills
+5. Experience Requirements
+6. What We Offer (benefits, culture, growth)
+7. How to Apply
+
+Format in clean Markdown. Make it compelling and specific to the technologies mentioned.
+"""
+
     try:
-        response = llm.invoke([
-            SystemMessage(content=prompt),
-            HumanMessage(content=user_message)
-        ])
-        return response.content.strip()
+        response = llm.invoke(jd_prompt)
+        jd_content = response.content.strip()
+        session["jd_content"] = jd_content
+
+        return (
+            f"✨ **Here's your Job Description:**\n\n"
+            f"{jd_content}\n\n"
+            f"---\n"
+            f"👆 Please review the JD above. "
+            f"Type **'approve'** to post it on all platforms and start the hiring workflow, "
+            f"or tell me what changes you'd like to make."
+        )
     except Exception as e:
-        print(f"[Chatbot] LLM error: {e}")
-        return f"I encountered an error: {str(e)}. Please check the backend logs."
+        return f"Sorry, I encountered an error generating the JD: {str(e)}. Please try again."
+
+
+# ── Workflow trigger ──────────────────────────────────────────────────────────
+
+async def _trigger_hiring_workflow(session: dict) -> str:
+    """Trigger the LangGraph hiring workflow with the collected hiring request."""
+    import uuid as _uuid
+    workflow_id = str(_uuid.uuid4())[:8].upper()
+
+    hr = session.get("hiring_request", {})
+    job_title = hr.get("job_title", "Open Position")
+
+    try:
+        from backend.workflows.graph import hiring_graph
+
+        thread_config = {"configurable": {"thread_id": workflow_id}}
+        initial_state = {
+            "messages": [],
+            "job_id": workflow_id,
+            "goal": f"Hire {hr.get('candidates_needed', 1)} {job_title}(s)",
+            "next_action": "jd_generation",
+            "agent_statuses": {"chatbot": "initiated"},
+            "plan": [],
+            "current_step_index": 0,
+            "data": {},
+            "hiring_request": hr,
+            "jd_content": session.get("jd_content"),
+            "jd_approved": True,
+            "jd_feedback": "",
+            "jd_retry_count": 1,
+            "posting_status": {},
+            "application_count": 0,
+            "candidates_needed": hr.get("candidates_needed", 10),
+            "sourcing_retry_count": 0,
+            "shortlisted_candidates": [],
+            "candidate_rankings": {},
+            "scheduled_interviews": [],
+            "interview_results": {},
+            "selected_candidates": [],
+            "offer_letters": {},
+            "offer_status": {},
+            "negotiation_rounds": {},
+            "onboarding_tasks": [],
+            "onboarding_status": {},
+            "chat_session_id": session.get("session_id"),
+            "chat_history": session.get("messages", []),
+            "error": None,
+        }
+
+        import asyncio
+        asyncio.create_task(
+            asyncio.to_thread(
+                hiring_graph.invoke,
+                initial_state,
+                thread_config
+            )
+        )
+        print(f"[Chatbot] ✅ Workflow {workflow_id} triggered for job: {job_title}")
+    except Exception as e:
+        print(f"[Chatbot] Workflow trigger error: {e}")
+
+    return workflow_id
 
 
 # ── API Endpoints ──────────────────────────────────────────────────────────────
@@ -245,23 +451,24 @@ def _generate_bot_response(session: dict, user_message: str) -> str:
 async def start_chatbot_session():
     """Start a new AI Hiring Chatbot session."""
     session_id = str(uuid.uuid4())
-    
+
     welcome_message = (
-        "Hi there! Great to connect.\n\n"
-        "To kick things off, please tell me what position you're looking to fill today? Also, include the key skills, technologies, and how many candidates you need to hire for this role.\n\n"
-        "Role: \n"
-        "Number of Positions: \n"
-        "Experience: \n"
-        "Key Skills: \n"
-        "Department: \n"
-        "Location:\n"
-        "Salary Budget: \n"
-        "Additional Requirements: "
+        "👋 Hi there! I'm your **AI Hiring Assistant**.\n\n"
+        "To get started, tell me about the position you'd like to fill. "
+        "Please include as many of these details as you can:\n\n"
+        "- **Role** (e.g. Senior Python Developer)\n"
+        "- **Number of Positions**\n"
+        "- **Experience Required** (e.g. 3-5 years)\n"
+        "- **Key Skills & Technologies** (e.g. Python, FastAPI, AWS)\n"
+        "- **Location** (e.g. Remote, Bangalore)\n"
+        "- **Salary Budget** (e.g. ₹15-25 LPA)\n"
+        "- **Additional Requirements** (optional)\n\n"
+        "You can provide everything in one message or we can go step by step — your choice! 🚀"
     )
 
     _sessions[session_id] = {
         "session_id": session_id,
-        "step": "collect_job_title_and_skills",
+        "step": "collect_details",
         "hiring_request": {},
         "messages": [
             {"role": "assistant", "content": welcome_message, "timestamp": datetime.utcnow().isoformat()}
@@ -274,7 +481,7 @@ async def start_chatbot_session():
     return StartSessionResponse(
         session_id=session_id,
         welcome_message=welcome_message,
-        step="collect_job_title_and_skills"
+        step="collect_details"
     )
 
 
@@ -282,7 +489,7 @@ async def start_chatbot_session():
 async def send_message(request: ChatMessageRequest):
     """
     Send a message to the chatbot and get an AI response.
-    The chatbot guides through the hiring request collection step by step.
+    Smart extraction: regex first, LLM second. Never asks for the same info twice.
     """
     session = _sessions.get(request.session_id)
     if not session:
@@ -295,24 +502,26 @@ async def send_message(request: ChatMessageRequest):
         "timestamp": datetime.utcnow().isoformat()
     })
 
-    current_step = session.get("step", "collect_job_title_and_skills")
+    current_step = session.get("step", "collect_details")
     workflow_triggered = False
     workflow_session_id = None
 
-    # Check for simple greeting to output template
+    # ── Handle simple greetings at the very start (no data yet) ───────────────
     msg_clean = request.message.lower().strip().replace(".", "").replace("!", "")
-    if current_step == "collect_job_title_and_skills" and msg_clean in ["hi", "hello", "hey", "greetings", "hi there", "hello there"]:
+    if current_step == "collect_details" and not session.get("hiring_request") and msg_clean in [
+        "hi", "hello", "hey", "greetings", "hi there", "hello there",
+    ]:
         bot_message = (
-            "Hi there! Great to connect.\n\n"
-            "To kick things off, please tell me what position you're looking to fill today? Also, include the key skills, technologies, and how many candidates you need to hire for this role.\n\n"
-            "Role: \n"
-            "Number of Positions: \n"
-            "Experience: \n"
-            "Key Skills: \n"
-            "Department: \n"
-            "Location:\n"
-            "Salary Budget: \n"
-            "Additional Requirements: "
+            "Great! Let's set up your hiring request. 🎯\n\n"
+            "Please provide the following details:\n\n"
+            "- **Role** (e.g. Senior Python Developer)\n"
+            "- **Number of Positions**\n"
+            "- **Experience Required**\n"
+            "- **Key Skills & Technologies**\n"
+            "- **Location**\n"
+            "- **Salary Budget**\n"
+            "- **Additional Requirements** (optional)\n\n"
+            "You can share everything in one message!"
         )
         session["messages"].append({
             "role": "assistant",
@@ -328,27 +537,87 @@ async def send_message(request: ChatMessageRequest):
             workflow_session_id=None
         )
 
-    # ── Extract data from user message for data-collection steps ──────────────
-    data_steps = [
-        "collect_job_title_and_skills",
-        "collect_experience",
-        "collect_department",
-        "collect_location",
-        "collect_budget",
-        "collect_candidates_needed",
-        "collect_additional_requirements",
-    ]
-
-    if current_step in data_steps:
-        extracted = _extract_data_from_message(current_step, request.message, session)
+    # ── Data collection phase ─────────────────────────────────────────────────
+    if current_step == "collect_details":
+        # Extract ALL fields from the user's message (regex + LLM)
+        extracted = _extract_all_fields(request.message, session.get("hiring_request", {}))
         if extracted:
             session["hiring_request"].update(extracted)
 
-    # ── Handle confirmation step ───────────────────────────────────────────────
-    if current_step == "confirmation":
+        # Check what's still missing
+        missing = _get_missing_required_fields(session["hiring_request"])
+        user_wants_proceed = _user_wants_to_proceed(request.message)
+
+        if len(missing) == 0:
+            # All required fields collected → generate JD immediately
+            session["step"] = "jd_generation"
+            bot_message = (
+                "✅ **Hiring request details completed!**\n\n"
+                "I'm now generating a professional Job Description tailored to your requirements. "
+                "This will take just a moment... 🤖⚙️"
+            )
+            session["messages"].append({
+                "role": "assistant",
+                "content": bot_message,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            bot_message = await _generate_jd_in_session(session)
+            session["step"] = "jd_review"
+        elif user_wants_proceed and session.get("hiring_request", {}).get("job_title"):
+            # User wants to proceed even with missing fields — fill defaults and generate JD immediately
+            hr = session["hiring_request"]
+            defaults = {
+                "candidates_needed": 1,
+                "experience_years": "Not specified",
+                "location": "Not specified",
+                "budget": "Competitive",
+                "skills_required": [],
+            }
+            for key, default_val in defaults.items():
+                if key not in hr or not hr[key]:
+                    hr[key] = default_val
+
+            session["step"] = "jd_generation"
+            bot_message = (
+                "✅ **Proceeding to generate Job Description with available details...** 🤖⚙️"
+            )
+            session["messages"].append({
+                "role": "assistant",
+                "content": bot_message,
+                "timestamp": datetime.utcnow().isoformat()
+            })
+            bot_message = await _generate_jd_in_session(session)
+            session["step"] = "jd_review"
+        else:
+            # Still missing some fields — ask for them
+            missing_labels = list(missing.values())
+            missing_list = "\n".join(f"- **{label}**" for label in missing_labels)
+
+            if extracted:
+                # Acknowledged what was provided, ask for the rest
+                collected_keys = [k for k in extracted.keys()]
+                collected_names = [REQUIRED_FIELDS.get(k, k) for k in collected_keys if k in REQUIRED_FIELDS]
+                ack = ""
+                if collected_names:
+                    ack = f"Thanks! I've noted the **{', '.join(collected_names)}**. "
+
+                bot_message = (
+                    f"{ack}I still need a few more details:\n\n"
+                    f"{missing_list}\n\n"
+                    "Please provide these, or say **'go ahead'** to proceed with what we have."
+                )
+            else:
+                # Nothing extracted — but don't say "I couldn't catch" if they just typed something short
+                bot_message = (
+                    "I need the following details to set up your hiring request:\n\n"
+                    f"{missing_list}\n\n"
+                    "Please share these details, or say **'go ahead'** to proceed with what we have."
+                )
+
+    # ── Confirmation step ─────────────────────────────────────────────────────
+    elif current_step == "confirmation":
         msg_lower = request.message.lower()
-        if any(word in msg_lower for word in ["yes", "confirm", "looks good", "correct", "proceed", "go ahead", "ok", "okay"]):
-            # Move to JD generation
+        if any(word in msg_lower for word in ["yes", "confirm", "looks good", "correct", "proceed", "go ahead", "ok", "okay", "lgtm"]):
             session["step"] = "jd_generation"
             bot_message = (
                 "✅ **Hiring request confirmed!**\n\n"
@@ -360,27 +629,33 @@ async def send_message(request: ChatMessageRequest):
                 "content": bot_message,
                 "timestamp": datetime.utcnow().isoformat()
             })
-            
+
             # Generate JD
             bot_message = await _generate_jd_in_session(session)
             session["step"] = "jd_review"
         else:
+            # User wants to edit — extract any updates
+            extracted = _extract_all_fields(request.message, session.get("hiring_request", {}))
+            if extracted:
+                session["hiring_request"].update(extracted)
+
+            summary = _build_summary(session["hiring_request"])
             bot_message = (
-                "No problem! Let me know what you'd like to change. "
-                "Which part of the hiring request needs updating?"
+                f"Got it! I've updated the details. Here's the revised summary:\n\n"
+                f"{summary}\n\n"
+                "Does everything look correct now? Type **'confirm'** to proceed."
             )
-    
+
+    # ── JD Review step ────────────────────────────────────────────────────────
     elif current_step == "jd_review":
-        # User is reviewing/approving the JD
         msg_lower = request.message.lower()
         if any(word in msg_lower for word in ["approve", "approved", "looks good", "yes", "go ahead", "post it", "publish"]):
             session["step"] = "workflow_running"
             workflow_triggered = True
-            
-            # Trigger the actual agentic workflow
+
             workflow_session_id = await _trigger_hiring_workflow(session)
             session["workflow_session_id"] = workflow_session_id
-            
+
             bot_message = (
                 "🎉 **JD Approved! Workflow is now running!**\n\n"
                 "I've kicked off the complete hiring pipeline:\n"
@@ -396,7 +671,6 @@ async def send_message(request: ChatMessageRequest):
             )
             session["step"] = "complete"
         else:
-            # They want changes to the JD
             session["hiring_request"]["jd_feedback"] = request.message
             bot_message = (
                 f"Got it! I'll revise the JD based on your feedback: *\"{request.message}\"*\n\n"
@@ -408,26 +682,9 @@ async def send_message(request: ChatMessageRequest):
                 "timestamp": datetime.utcnow().isoformat()
             })
             bot_message = await _generate_jd_in_session(session)
-    
+
     else:
-        # Regular data collection or transition
-        bot_message = _generate_bot_response(session, request.message)
-        
-        # Advance step based on what was collected
-        if current_step in data_steps and session["hiring_request"]:
-            next_step = _get_next_step(current_step, session)
-            session["step"] = next_step
-            
-            # If we reached confirmation, append a summary
-            if next_step == "confirmation":
-                hr = session["hiring_request"]
-                summary = _build_summary(hr)
-                bot_message = (
-                    f"Great! Here's a summary of your hiring request:\n\n"
-                    f"{summary}\n\n"
-                    "Does everything look correct? Type **'confirm'** to proceed with JD generation, "
-                    "or let me know what needs to be changed."
-                )
+        bot_message = "I'm not sure how to help with that right now. Please start a new session if needed."
 
     # Add bot response to history
     session["messages"].append({
@@ -442,7 +699,8 @@ async def send_message(request: ChatMessageRequest):
         step=session.get("step", current_step),
         hiring_request=session.get("hiring_request"),
         workflow_triggered=workflow_triggered,
-        workflow_session_id=workflow_session_id
+        workflow_session_id=workflow_session_id,
+        jd_content=session.get("jd_content")
     )
 
 
@@ -490,127 +748,135 @@ async def approve_jd(request: JDApprovalRequest):
         }
 
 
-# ── Helper Functions ───────────────────────────────────────────────────────────
+# ── JD Download Endpoints ──────────────────────────────────────────────────────
 
-def _build_summary(hr: dict) -> str:
-    """Build a markdown summary of the hiring request."""
-    skills = hr.get("skills_required", [])
-    skills_str = ", ".join(skills) if skills else "Not specified"
-    return (
-        f"📋 **Hiring Request Summary**\n\n"
-        f"- **Job Title**: {hr.get('job_title', 'Not specified')}\n"
-        f"- **Department**: {hr.get('department', 'Not specified')}\n"
-        f"- **Skills & Technologies**: {skills_str}\n"
-        f"- **Experience**: {hr.get('experience_years', 'Not specified')}\n"
-        f"- **Location**: {hr.get('location', 'Not specified')}\n"
-        f"- **Budget/Salary**: {hr.get('budget', 'Not specified')}\n"
-        f"- **Candidates to Hire**: {hr.get('candidates_needed', 'Not specified')}\n"
-        f"- **Additional Requirements**: {hr.get('additional_requirements', 'None')}"
-    )
+@router.get("/session/{session_id}/download-jd/pdf")
+async def download_jd_pdf(session_id: str):
+    """Download the generated JD as a PDF file."""
+    session = _sessions.get(session_id)
+    if not session or not session.get("jd_content"):
+        raise HTTPException(status_code=404, detail="Session or Job Description not found")
 
-
-async def _generate_jd_in_session(session: dict) -> str:
-    """Generate a JD based on the hiring request and return it formatted for chat."""
-    hr = session.get("hiring_request", {})
-    skills = ", ".join(hr.get("skills_required", []))
-    feedback = hr.get("jd_feedback", "")
+    import io
+    from fastapi.responses import StreamingResponse
     
-    jd_prompt = f"""Generate a professional Job Description for:
-Job Title: {hr.get('job_title', 'Software Engineer')}
-Department: {hr.get('department', 'Engineering')}
-Required Skills/Technologies: {skills or 'Not specified'}
-Experience: {hr.get('experience_years', '3+ years')}
-Budget: {hr.get('budget', 'Competitive')}
-Location: {hr.get('location', 'Remote')}
-Positions Available: {hr.get('candidates_needed', 1)}
-Additional Requirements: {hr.get('additional_requirements', 'None')}
-{f'Previous Feedback to Address: {feedback}' if feedback else ''}
-
-Create a complete, attractive JD with:
-1. Job Title & Overview
-2. Key Responsibilities (8-10 points)
-3. Required Skills & Technologies (match exactly what was specified)
-4. Good to Have Skills
-5. Experience Requirements
-6. What We Offer (benefits, culture, growth)
-7. How to Apply
-
-Format in clean Markdown. Make it compelling and specific to the technologies mentioned.
-"""
+    title = f"Job Description - {session['hiring_request'].get('job_title', 'Open Position')}"
+    text = session["jd_content"]
     
+    # Generate PDF using PyMuPDF (fitz)
     try:
-        response = llm.invoke([SystemMessage(content=jd_prompt)])
-        jd_content = response.content.strip()
-        session["jd_content"] = jd_content
+        import fitz
+        doc = fitz.open()
+        page = doc.new_page()
+        margin = 50
+        width = page.rect.width - (margin * 2)
         
-        return (
-            f"✨ **Here's your Job Description:**\n\n"
-            f"{jd_content}\n\n"
-            f"---\n"
-            f"👆 Please review the JD above. "
-            f"Type **'approve'** to post it on all platforms and start the hiring workflow, "
-            f"or tell me what changes you'd like to make."
-        )
-    except Exception as e:
-        return f"Sorry, I encountered an error generating the JD: {str(e)}. Please try again."
-
-
-async def _trigger_hiring_workflow(session: dict) -> str:
-    """Trigger the LangGraph hiring workflow with the collected hiring request."""
-    import uuid as _uuid
-    workflow_id = str(_uuid.uuid4())[:8].upper()
-    
-    hr = session.get("hiring_request", {})
-    job_title = hr.get("job_title", "Open Position")
-    
-    try:
-        from backend.workflows.graph import hiring_graph
+        y = margin + 20
         
-        thread_config = {"configurable": {"thread_id": workflow_id}}
-        initial_state = {
-            "messages": [],
-            "job_id": workflow_id,
-            "goal": f"Hire {hr.get('candidates_needed', 1)} {job_title}(s) for {hr.get('department', 'the team')}",
-            "next_action": "jd_generation",
-            "agent_statuses": {"chatbot": "initiated"},
-            "plan": [],
-            "current_step_index": 0,
-            "data": {},
-            "hiring_request": hr,
-            "jd_content": session.get("jd_content"),
-            "jd_approved": True,  # Already approved in chatbot
-            "jd_feedback": "",
-            "jd_retry_count": 1,
-            "posting_status": {},
-            "application_count": 0,
-            "candidates_needed": hr.get("candidates_needed", 10),
-            "sourcing_retry_count": 0,
-            "shortlisted_candidates": [],
-            "candidate_rankings": {},
-            "scheduled_interviews": [],
-            "interview_results": {},
-            "selected_candidates": [],
-            "offer_letters": {},
-            "offer_status": {},
-            "negotiation_rounds": {},
-            "onboarding_tasks": [],
-            "onboarding_status": {},
-            "chat_session_id": session.get("session_id"),
-            "chat_history": session.get("messages", []),
-            "error": None,
+        # Title
+        page.insert_text((margin, y), title, fontsize=16, fontname="helvetica-bold", color=(0.1, 0.1, 0.4))
+        y += 30
+        
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line:
+                y += 10
+                continue
+                
+            if y > page.rect.height - margin - 30:
+                page = doc.new_page()
+                y = margin + 20
+                
+            fontsize = 10
+            fontname = "helvetica"
+            color = (0.2, 0.2, 0.2)
+            
+            if line.startswith("# "):
+                fontsize = 14
+                fontname = "helvetica-bold"
+                line = line[2:]
+                y += 8
+            elif line.startswith("## "):
+                fontsize = 12
+                fontname = "helvetica-bold"
+                line = line[3:]
+                y += 6
+            elif line.startswith("### "):
+                fontsize = 11
+                fontname = "helvetica-bold"
+                line = line[4:]
+                y += 4
+            elif line.startswith("- ") or line.startswith("* "):
+                page.insert_text((margin, y), "•", fontsize=10, fontname="helvetica", color=(0.3, 0.3, 0.3))
+                text_rect = fitz.Rect(margin + 15, y - 8, margin + width, y + 100)
+                page.insert_textbox(text_rect, line[2:], fontsize=fontsize, fontname=fontname, color=color)
+                num_lines = len(line[2:]) // 70 + 1
+                y += num_lines * 14
+                continue
+                
+            text_rect = fitz.Rect(margin, y - 8, margin + width, y + 100)
+            page.insert_textbox(text_rect, line, fontsize=fontsize, fontname=fontname, color=color)
+            num_lines = len(line) // 80 + 1
+            y += num_lines * 14
+            
+        file_stream = io.BytesIO()
+        doc.save(file_stream)
+        file_stream.seek(0)
+        
+        headers = {
+            "Content-Disposition": f"attachment; filename=JD_{session_id[:8]}.pdf",
+            "Access-Control-Expose-Headers": "Content-Disposition"
         }
-        
-        # Run async in background (non-blocking)
-        import asyncio
-        asyncio.create_task(
-            asyncio.to_thread(
-                hiring_graph.invoke,
-                initial_state,
-                thread_config
-            )
-        )
-        print(f"[Chatbot] ✅ Workflow {workflow_id} triggered for job: {job_title}")
+        return StreamingResponse(file_stream, media_type="application/pdf", headers=headers)
     except Exception as e:
-        print(f"[Chatbot] Workflow trigger error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+
+@router.get("/session/{session_id}/download-jd/doc")
+async def download_jd_docx(session_id: str):
+    """Download the generated JD as a Word document (.docx)."""
+    session = _sessions.get(session_id)
+    if not session or not session.get("jd_content"):
+        raise HTTPException(status_code=404, detail="Session or Job Description not found")
+
+    import io
+    from fastapi.responses import StreamingResponse
     
-    return workflow_id
+    title = f"Job Description - {session['hiring_request'].get('job_title', 'Open Position')}"
+    text = session["jd_content"]
+    
+    try:
+        from docx import Document
+        doc = Document()
+        doc.add_heading(title, level=1)
+        
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith("# "):
+                doc.add_heading(line[2:], level=1)
+            elif line.startswith("## "):
+                doc.add_heading(line[3:], level=2)
+            elif line.startswith("### "):
+                doc.add_heading(line[4:], level=3)
+            elif line.startswith("- ") or line.startswith("* "):
+                doc.add_paragraph(line[2:], style='List Bullet')
+            else:
+                doc.add_paragraph(line)
+                
+        file_stream = io.BytesIO()
+        doc.save(file_stream)
+        file_stream.seek(0)
+        
+        headers = {
+            "Content-Disposition": f"attachment; filename=JD_{session_id[:8]}.docx",
+            "Access-Control-Expose-Headers": "Content-Disposition"
+        }
+        return StreamingResponse(
+            file_stream,
+            media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            headers=headers
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate Word document: {str(e)}")

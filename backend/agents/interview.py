@@ -126,7 +126,7 @@ def interview_conduct_node(state: HiringState) -> dict:
                 candidate_experience=candidate.get("experience", 0),
                 screening_score=candidate.get("score", 50),
             )
-            response = llm.invoke([SystemMessage(content=prompt)])
+            response = llm.invoke(prompt)
             
             import json, re
             json_match = re.search(r'\{.*\}', response.content, re.DOTALL)

@@ -97,7 +97,7 @@ def screening_node(state: HiringState) -> dict:
                 candidate_education=candidate["education"],
                 candidate_roles=candidate["roles"],
             )
-            response = llm.invoke([SystemMessage(content=prompt)])
+            response = llm.invoke(prompt)
             
             import json, re
             # Extract JSON from response

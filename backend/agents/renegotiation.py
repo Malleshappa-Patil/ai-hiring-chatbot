@@ -101,7 +101,7 @@ def renegotiation_node(state: HiringState) -> dict:
                 candidate_name=candidate_name,
                 concerns=concerns,
             )
-            response = llm.invoke([SystemMessage(content=prompt)])
+            response = llm.invoke(prompt)
             negotiation_content = response.content.strip()
         except Exception as e:
             negotiation_content = f"Dear {candidate_name}, we appreciate your counter-proposal and are working on a revised offer."

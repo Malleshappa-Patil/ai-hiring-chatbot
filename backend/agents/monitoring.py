@@ -100,7 +100,7 @@ def jd_optimization_node(state: HiringState) -> dict:
             threshold=threshold,
             jd_content=jd_content,
         )
-        response = llm.invoke([SystemMessage(content=prompt)])
+        response = llm.invoke(prompt)
         improved_jd = response.content.strip()
     except Exception as e:
         print(f"[JD Optimization] LLM error: {e}")

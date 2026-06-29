@@ -1,18 +1,34 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { workflowApi, jobsApi } from '@/api'
-import { GitBranch, Activity, Clock, CheckCircle2, XCircle, AlertCircle, Loader2, Briefcase, RefreshCw } from 'lucide-react'
-import type { JobStatus } from '@/types'
+import { 
+  GitBranch, 
+  Activity, 
+  Clock, 
+  CheckCircle2, 
+  XCircle, 
+  AlertCircle, 
+  Loader2, 
+  Briefcase, 
+  RefreshCw, 
+  ChevronDown, 
+  ChevronUp, 
+  Check, 
+  Lock, 
+  Play, 
+  ClipboardList, 
+  FileText, 
+  UserCheck, 
+  Send, 
+  Eye, 
+  Search, 
+  Users, 
+  Video, 
+  UserPlus,
+  AlertTriangle
+} from 'lucide-react'
+import type { JobStatus, AgentLog } from '@/types'
 import toast from 'react-hot-toast'
-import ReactFlow, {
-  Background,
-  Controls,
-  MarkerType,
-  Handle,
-  Position,
-} from 'reactflow'
-import type { Node, Edge, NodeProps } from 'reactflow'
-import 'reactflow/dist/style.css'
 
 const jobStatusColor: Record<JobStatus, string> = {
   draft: '#64748b',
@@ -40,160 +56,154 @@ const jobStatusLabel: Record<JobStatus, string> = {
   closed: 'Closed',
 }
 
-interface AgentNodeData {
-  label: string
-  description?: string
-  status: 'idle' | 'running' | 'completed' | 'failed' | 'waiting_approval' | 'below_threshold' | 'threshold_reached' | 'max_retries' | 'no_candidates_selected'
-  isCurrent: boolean
-  hasLeftSource?: boolean
-  hasLeftTarget?: boolean
-  hasRightSource?: boolean
-  hasRightTarget?: boolean
+interface StageConfig {
+  id: string
+  title: string
+  agentName: string
+  description: string
+  icon: any
+  subSteps: string[]
 }
 
-function AgentNode({ data }: NodeProps<AgentNodeData>) {
-  const isStart = data.label === 'START'
-  const isEnd = data.label === 'END'
-
-  if (isStart) {
-    return (
-      <div style={{
-        background: 'rgba(16, 185, 129, 0.1)',
-        backdropFilter: 'blur(12px)',
-        border: '2px solid #10b981',
-        borderRadius: '20px',
-        padding: '6px 20px',
-        color: '#10b981',
-        fontWeight: 700,
-        fontSize: '11px',
-        textAlign: 'center',
-        minWidth: '80px',
-        boxShadow: data.isCurrent ? '0 0 12px #10b981' : 'none',
-      }}>
-        <Handle type="source" position={Position.Bottom} style={{ background: '#10b981', width: '6px', height: '6px' }} />
-        START
-      </div>
-    )
+const STAGES: StageConfig[] = [
+  {
+    id: 'supervisor',
+    title: 'Workflow Initiation & Orchestration',
+    agentName: 'Supervisor Agent',
+    description: 'Orchestrates the recruitment flow and delegates tasks based on hiring goals.',
+    icon: Play,
+    subSteps: [
+      'Parse hiring goal and parameters',
+      'Initialize workflow session and database entry',
+      'Delegate execution planning to Planning Agent'
+    ]
+  },
+  {
+    id: 'planning',
+    title: 'Recruitment Planning',
+    agentName: 'Planning Agent',
+    description: 'Converts recruiting goals into structured pipeline milestones.',
+    icon: ClipboardList,
+    subSteps: [
+      'Analyze job requirements and timeline constraints',
+      'Formulate recruitment stage sequence and candidate targets',
+      'Save plan topology to short-term memory'
+    ]
+  },
+  {
+    id: 'jd_generation',
+    title: 'Job Description Drafting',
+    agentName: 'JD Agent',
+    description: 'Generates professional, AI-optimized Job Descriptions matching constraints.',
+    icon: FileText,
+    subSteps: [
+      'Search skills database and align industry taxonomies',
+      'Invoke generative LLM chain to draft JD content',
+      'Parse draft into standard sections (responsibilities, requirements)'
+    ]
+  },
+  {
+    id: 'human_approval',
+    title: 'JD Review & Approval',
+    agentName: 'Human Recruiter',
+    description: 'Awaiting review and approval from recruiter before role publication.',
+    icon: UserCheck,
+    subSteps: [
+      'Notify hiring manager of pending JD draft',
+      'Capture edits, corrections, or feedback inputs',
+      'Unlock sourcing process upon approval verification'
+    ]
+  },
+  {
+    id: 'sourcing',
+    title: 'Candidate Sourcing & Job Posting',
+    agentName: 'Sourcing Agent',
+    description: 'Publishes approved roles to major boards like LinkedIn, Indeed, and Naukri.',
+    icon: Send,
+    subSteps: [
+      'Generate board-specific metadata structures',
+      'Submit listings to external job board APIs',
+      'Listen for candidate applications and save initial profile records'
+    ]
+  },
+  {
+    id: 'monitoring',
+    title: 'Application Volume Monitoring',
+    agentName: 'Monitoring Agent',
+    description: 'Monitors incoming traffic and runs optimization loops if application counts are low.',
+    icon: Eye,
+    subSteps: [
+      'Track applicant counts against target candidate volume (threshold: 10)',
+      'Analyze application velocity trends',
+      'Trigger JD optimization loop if traffic falls below target threshold'
+    ]
+  },
+  {
+    id: 'screening',
+    title: 'Resume Parsing & Screening',
+    agentName: 'Resume Screening Agent',
+    description: 'Evaluates candidate resumes using AI matching algorithms.',
+    icon: Search,
+    subSteps: [
+      'Parse incoming resume PDFs into plain text data',
+      'Calculate match scores and classify fit categories',
+      'Generate key skills comparison and screening justification'
+    ]
+  },
+  {
+    id: 'human_review',
+    title: 'Shortlist Validation',
+    agentName: 'Human Recruiter',
+    description: 'Recruiter verifies matching scores and approves the candidate shortlist.',
+    icon: Users,
+    subSteps: [
+      'Present AI shortlists and evaluation reasoning',
+      'Allow recruiter to override candidate classifications',
+      'Trigger calendar scheduling for approved candidates'
+    ]
+  },
+  {
+    id: 'interviewing',
+    title: 'Interview Coordination & Simulation',
+    agentName: 'Interview Agent',
+    description: 'Schedules and runs technical/HR evaluation simulations.',
+    icon: Video,
+    subSteps: [
+      'Generate meeting schedules and coordinate calendar invites',
+      'Simulate technical and behavioral interactive evaluation chats',
+      'Compile interview feedback summaries and composite score sheets'
+    ]
+  },
+  {
+    id: 'onboarding',
+    title: 'Offer Generation & Onboarding',
+    agentName: 'Onboarding Agent',
+    description: 'Prepares welcome package, offer letters, and corporate accounts.',
+    icon: UserPlus,
+    subSteps: [
+      'Compose customized formal offer letters',
+      'Set up enterprise communication accounts (email, Slack)',
+      'Disseminate IT tasks and onboarding checklists to new hire'
+    ]
   }
+]
 
-  if (isEnd) {
-    return (
-      <div style={{
-        background: 'rgba(239, 68, 68, 0.1)',
-        backdropFilter: 'blur(12px)',
-        border: '2px solid #ef4444',
-        borderRadius: '20px',
-        padding: '6px 20px',
-        color: '#ef4444',
-        fontWeight: 700,
-        fontSize: '11px',
-        textAlign: 'center',
-        minWidth: '80px',
-        boxShadow: data.isCurrent ? '0 0 12px #ef4444' : 'none',
-      }}>
-        <Handle type="target" position={Position.Top} style={{ background: '#ef4444', width: '6px', height: '6px' }} />
-        END
-      </div>
-    )
-  }
-
-  const statusColor: Record<string, string> = {
-    idle: '#475569',
-    running: '#6366f1',
-    completed: '#10b981',
-    threshold_reached: '#10b981',
-    below_threshold: '#f59e0b',
-    waiting_approval: '#f59e0b',
-    max_retries: '#94a3b8',
-    no_candidates_selected: '#ef4444',
-    failed: '#ef4444',
-  }
-
-  const statusBg: Record<string, string> = {
-    idle: 'rgba(71, 85, 105, 0.1)',
-    running: 'rgba(99, 102, 241, 0.15)',
-    completed: 'rgba(16, 185, 129, 0.15)',
-    threshold_reached: 'rgba(16, 185, 129, 0.15)',
-    below_threshold: 'rgba(245, 158, 10, 0.15)',
-    waiting_approval: 'rgba(245, 158, 10, 0.15)',
-    max_retries: 'rgba(148, 163, 184, 0.1)',
-    no_candidates_selected: 'rgba(239, 68, 68, 0.15)',
-    failed: 'rgba(239, 68, 68, 0.15)',
-  }
-
-  const borderGlow = data.isCurrent 
-    ? `0 0 16px ${statusColor[data.status] || '#6366f1'}` 
-    : 'none'
-
-  return (
-    <div style={{
-      background: 'rgba(20, 20, 35, 0.85)',
-      backdropFilter: 'blur(16px)',
-      border: `2px solid ${data.isCurrent ? (statusColor[data.status] || '#6366f1') : 'rgba(255, 255, 255, 0.08)'}`,
-      borderRadius: '12px',
-      padding: '12px 16px',
-      color: '#e2e8f0',
-      minWidth: '220px',
-      boxShadow: borderGlow,
-      transition: 'all 0.3s ease',
-      fontSize: '13px',
-      position: 'relative',
-    }}>
-      {/* Target handle at the top */}
-      <Handle type="target" position={Position.Top} style={{ background: '#475569', width: '6px', height: '6px' }} />
-
-      {/* Source handle at the bottom */}
-      <Handle type="source" position={Position.Bottom} style={{ background: '#475569', width: '6px', height: '6px' }} />
-      
-      {/* Left handle for loops */}
-      {data.hasLeftSource && (
-        <Handle type="source" position={Position.Left} id="left-source" style={{ background: '#94a3b8', width: '6px', height: '6px' }} />
-      )}
-      {data.hasLeftTarget && (
-        <Handle type="target" position={Position.Left} id="left-target" style={{ background: '#94a3b8', width: '6px', height: '6px' }} />
-      )}
-
-      {/* Right handle for loops */}
-      {data.hasRightSource && (
-        <Handle type="source" position={Position.Right} id="right-source" style={{ background: '#94a3b8', width: '6px', height: '6px' }} />
-      )}
-      {data.hasRightTarget && (
-        <Handle type="target" position={Position.Right} id="right-target" style={{ background: '#94a3b8', width: '6px', height: '6px' }} />
-      )}
-
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontWeight: 600, color: data.isCurrent ? '#ffffff' : '#cbd5e1' }}>{data.label}</span>
-          <span style={{
-            fontSize: '9px',
-            textTransform: 'uppercase',
-            fontWeight: 700,
-            padding: '2px 6px',
-            borderRadius: '10px',
-            background: statusBg[data.status] || 'rgba(255,255,255,0.05)',
-            color: statusColor[data.status] || '#cbd5e1',
-            border: `1px solid ${statusColor[data.status]}33`,
-            letterSpacing: '0.5px',
-          }}>
-            {data.status === 'waiting_approval' ? 'approval' : data.status.replace(/_/g, ' ')}
-          </span>
-        </div>
-        {data.description && (
-          <span style={{ fontSize: '11px', color: '#64748b', marginTop: '2px', lineHeight: '1.4' }}>
-            {data.description}
-          </span>
-        )}
-      </div>
-    </div>
-  )
-}
-
-const nodeTypes = {
-  agent: AgentNode,
-}
+const STAGE_ORDER = [
+  'supervisor',
+  'planning',
+  'jd_generation',
+  'human_approval',
+  'sourcing',
+  'monitoring',
+  'screening',
+  'human_review',
+  'interviewing',
+  'onboarding'
+]
 
 export default function WorkflowMonitor() {
   const [selectedJobId, setSelectedJobId] = useState('')
+  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({})
   const qc = useQueryClient()
 
   const { data: jobs } = useQuery({
@@ -215,7 +225,7 @@ export default function WorkflowMonitor() {
     refetchInterval: 5000, // Poll every 5s when a job is selected
   })
 
-  const { data: logs } = useQuery({
+  const { data: logs } = useQuery<AgentLog[]>({
     queryKey: ['workflow-logs', selectedJobId],
     queryFn: () => workflowApi.logs(selectedJobId),
     enabled: !!selectedJobId,
@@ -235,400 +245,154 @@ export default function WorkflowMonitor() {
     },
   })
 
+  // Auto-expand current active stage when it updates
+  useEffect(() => {
+    if (workflowState?.current_stage) {
+      setExpandedStages(prev => ({
+        ...prev,
+        [workflowState.current_stage]: true
+      }))
+    }
+  }, [workflowState?.current_stage])
+
+  const toggleStage = (stageId: string) => {
+    setExpandedStages(prev => ({
+      ...prev,
+      [stageId]: !prev[stageId]
+    }))
+  }
+
+  const handleExpandAll = () => {
+    const allExpanded = STAGES.reduce((acc, stage) => {
+      acc[stage.id] = true
+      return acc
+    }, {} as Record<string, boolean>)
+    setExpandedStages(allExpanded)
+  }
+
+  const handleCollapseAll = () => {
+    setExpandedStages({})
+  }
+
   const isStuckAtInterview = workflowState?.current_stage === 'interviewing' &&
     workflowState?.agent_statuses?.['interview'] === 'running'
 
   const currentJob = jobs?.items?.find(j => j.id === selectedJobId)
 
-  // Memoized nodes for React Flow
-  const nodes: Node[] = useMemo(() => {
-    if (!workflowState) return []
+  // Status mapping for a stage based on backend state
+  const getStageStatus = (stageId: string): 'idle' | 'running' | 'completed' | 'failed' | 'waiting_approval' => {
+    if (!workflowState) return 'idle'
 
-    const isFinished = workflowState.current_stage === 'completed'
     const isFailed = workflowState.current_stage === 'failed'
-
-    const getStatus = (nodeId: string): AgentNodeData['status'] => {
-      if (isFailed && workflowState.current_stage === nodeId) return 'failed'
-
-      const statusKeyMap: Record<string, string> = {
-        supervisor: 'supervisor',
-        planning: 'planning',
-        jd_agent: 'jd_generation',
-        human_approval: 'human_approval',
-        sourcing_agent: 'sourcing',
-        monitoring_agent: 'monitoring',
-        jd_optimization: 'jd_optimization',
-        screening_agent: 'screening',
-        human_review: 'human_review',
-        interview_agent: 'interview',
-        onboarding_agent: 'onboarding',
-      }
-
-      const key = statusKeyMap[nodeId]
-      if (!key) return 'idle'
-      return (workflowState.agent_statuses?.[key] || 'idle') as any
+    
+    // If workflow is failed and this stage was the active one when it failed
+    if (isFailed && workflowState.current_stage === stageId) {
+      return 'failed'
     }
 
-    const isCurrentNode = (nodeId: string): boolean => {
-      if (isFinished || isFailed) return false
-
-      const currentStage = workflowState.current_stage
-      const stageMap: Record<string, string> = {
-        supervisor: 'supervisor',
-        planning: 'planning',
-        jd_agent: 'jd_generation',
-        human_approval: 'human_approval',
-        sourcing_agent: 'sourcing',
-        monitoring_agent: 'monitoring',
-        jd_optimization: 'jd_optimization',
-        screening_agent: 'screening',
-        human_review: 'human_review',
-        interview_agent: 'interviewing',
-        onboarding_agent: 'onboarding',
-      }
-
-      return stageMap[nodeId] === currentStage
+    const agentKeyMap: Record<string, string> = {
+      supervisor: 'supervisor',
+      planning: 'planning',
+      jd_generation: 'jd_generation',
+      human_approval: 'human_approval',
+      sourcing: 'sourcing',
+      monitoring: 'monitoring',
+      screening: 'screening',
+      human_review: 'human_review',
+      interviewing: 'interview',
+      onboarding: 'onboarding',
     }
 
-    return [
-      {
-        id: 'start',
-        type: 'agent',
-        position: { x: 350, y: 70 },
-        data: { label: 'START', isCurrent: false, status: 'completed' },
-      },
-      {
-        id: 'supervisor',
-        type: 'agent',
-        position: { x: 350, y: 150 },
-        data: {
-          label: 'Supervisor Agent',
-          description: 'Orchestrates the recruitment flow, decides next action.',
-          isCurrent: isCurrentNode('supervisor'),
-          status: getStatus('supervisor'),
-        },
-      },
-      {
-        id: 'planning',
-        type: 'agent',
-        position: { x: 350, y: 270 },
-        data: {
-          label: 'Planning Agent',
-          description: 'Converts goals into executable recruitment sub-tasks.',
-          isCurrent: isCurrentNode('planning'),
-          status: getStatus('planning'),
-        },
-      },
-      {
-        id: 'jd_agent',
-        type: 'agent',
-        position: { x: 350, y: 390 },
-        data: {
-          label: 'JD Agent',
-          description: 'Generates customized Job Descriptions using AI models.',
-          isCurrent: isCurrentNode('jd_agent'),
-          status: getStatus('jd_agent'),
-          hasLeftTarget: true,
-        },
-      },
-      {
-        id: 'human_approval',
-        type: 'agent',
-        position: { x: 350, y: 510 },
-        data: {
-          label: 'Human Approval',
-          description: 'Recruiter approves, edits, or rejects generated JD.',
-          isCurrent: isCurrentNode('human_approval'),
-          status: getStatus('human_approval'),
-          hasLeftSource: true,
-        },
-      },
-      {
-        id: 'sourcing_agent',
-        type: 'agent',
-        position: { x: 350, y: 630 },
-        data: {
-          label: 'Sourcing Agent',
-          description: 'Publishes approved roles to LinkedIn, Indeed, Naukri.',
-          isCurrent: isCurrentNode('sourcing_agent'),
-          status: getStatus('sourcing_agent'),
-          hasLeftTarget: true,
-        },
-      },
-      {
-        id: 'monitoring_agent',
-        type: 'agent',
-        position: { x: 350, y: 750 },
-        data: {
-          label: 'Monitoring Agent',
-          description: 'Monitors application flow vs threshold (10 applicants).',
-          isCurrent: isCurrentNode('monitoring_agent'),
-          status: getStatus('monitoring_agent'),
-          hasLeftSource: true,
-        },
-      },
-      {
-        id: 'jd_optimization',
-        type: 'agent',
-        position: { x: 90, y: 690 },
-        data: {
-          label: 'Trigger Improvement Actions',
-          description: 'Optimizes and reposts JD to boost application count.',
-          isCurrent: isCurrentNode('jd_optimization'),
-          status: getStatus('jd_optimization'),
-          hasLeftSource: true,
-        },
-      },
-      {
-        id: 'screening_agent',
-        type: 'agent',
-        position: { x: 350, y: 870 },
-        data: {
-          label: 'Resume Screening Agent',
-          description: 'Parses and matches candidate profiles against JD.',
-          isCurrent: isCurrentNode('screening_agent'),
-          status: getStatus('screening_agent'),
-          hasRightTarget: true,
-        },
-      },
-      {
-        id: 'human_review',
-        type: 'agent',
-        position: { x: 350, y: 990 },
-        data: {
-          label: 'Human Review',
-          description: 'Recruiter reviews AI-shortlisted candidate scores.',
-          isCurrent: isCurrentNode('human_review'),
-          status: getStatus('human_review'),
-        },
-      },
-      {
-        id: 'interview_agent',
-        type: 'agent',
-        position: { x: 350, y: 1110 },
-        data: {
-          label: 'Interview Agent',
-          description: 'Schedules and coordinates candidate evaluations.',
-          isCurrent: isCurrentNode('interview_agent'),
-          status: getStatus('interview_agent'),
-          hasRightSource: true,
-        },
-      },
-      {
-        id: 'onboarding_agent',
-        type: 'agent',
-        position: { x: 350, y: 1230 },
-        data: {
-          label: 'Onboarding Agent',
-          description: 'Dispatches welcome packet, sets up IT accounts.',
-          isCurrent: isCurrentNode('onboarding_agent'),
-          status: getStatus('onboarding_agent'),
-        },
-      },
-      {
-        id: 'end',
-        type: 'agent',
-        position: { x: 350, y: 1340 },
-        data: {
-          label: 'END',
-          isCurrent: isFinished,
-          status: isFinished ? 'completed' : 'idle',
-        },
-      },
-    ]
-  }, [workflowState])
+    const key = agentKeyMap[stageId]
+    if (!key) return 'idle'
 
-  // Memoized edges for React Flow
-  const edges: Edge[] = useMemo(() => {
-    if (!workflowState) return []
+    return (workflowState.agent_statuses?.[key] || 'idle') as any
+  }
 
-    const edgeStyle = (isActive: boolean) => ({
-      stroke: isActive ? '#6366f1' : 'rgba(255, 255, 255, 0.1)',
-      strokeWidth: isActive ? 2.5 : 1.5,
-      animation: isActive ? 'dash 1.5s linear infinite' : 'none',
-      strokeDasharray: isActive ? '6,6' : 'none',
+  // Composite state evaluation for display
+  const getStageState = (stageId: string): 'completed' | 'running' | 'waiting_approval' | 'failed' | 'idle' => {
+    if (!workflowState) return 'idle'
+
+    const currentStage = workflowState.current_stage
+    const isFinished = currentStage === 'completed'
+    const isFailed = currentStage === 'failed'
+
+    const status = getStageStatus(stageId)
+    if (status === 'completed' || status === 'threshold_reached' as any || status === 'below_threshold' as any) {
+      return 'completed'
+    }
+    if (status === 'failed') return 'failed'
+    if (status === 'waiting_approval') return 'waiting_approval'
+    if (status === 'running') return 'running'
+
+    if (isFinished) return 'completed'
+    if (isFailed && stageId === workflowState.current_stage) return 'failed'
+
+    // Fallback checks using linear progression indices
+    const currentIdx = STAGE_ORDER.indexOf(currentStage)
+    const stageIdx = STAGE_ORDER.indexOf(stageId)
+
+    if (currentIdx !== -1 && stageIdx !== -1) {
+      if (stageIdx < currentIdx) return 'completed'
+      if (stageIdx === currentIdx) return 'running'
+    }
+
+    return 'idle'
+  }
+
+  const getLineBg = (stageId: string) => {
+    const state = getStageState(stageId)
+    if (state === 'completed') return '#10b981'
+    return 'rgba(255, 255, 255, 0.08)'
+  }
+
+  const getSubStepState = (stageState: 'completed' | 'running' | 'waiting_approval' | 'failed' | 'idle', stepIdx: number) => {
+    if (stageState === 'completed') return 'completed'
+    if (stageState === 'idle') return 'pending'
+    if (stageState === 'failed') return 'failed'
+    if (stageState === 'running') {
+      if (stepIdx === 0) return 'completed'
+      if (stepIdx === 1) return 'active'
+      return 'pending'
+    }
+    if (stageState === 'waiting_approval') {
+      if (stepIdx === 0) return 'completed'
+      return 'active'
+    }
+    return 'pending'
+  }
+
+  const getStageLogs = (stageId: string): AgentLog[] => {
+    if (!logs) return []
+    return logs.filter(log => {
+      switch (stageId) {
+        case 'supervisor':
+          return log.agent_name === 'Supervisor Agent' && 
+            (log.action === 'workflow_initiated' || log.action === 'workflow_completed')
+        case 'planning':
+          return log.agent_name === 'Planning Agent'
+        case 'jd_generation':
+          return log.agent_name === 'JD Agent' && 
+            (log.action === 'generate_job_description' || log.action === 'regenerate_job_description')
+        case 'human_approval':
+          return false // Recruiter touchpoint
+        case 'sourcing':
+          return log.agent_name === 'Sourcing Agent'
+        case 'monitoring':
+          return log.agent_name === 'Monitoring Agent'
+        case 'screening':
+          return log.agent_name === 'Resume Screening Agent'
+        case 'human_review':
+          return log.agent_name === 'Supervisor Agent' && log.action === 'human_review_completed'
+        case 'interviewing':
+          return log.agent_name === 'Interview Agent'
+        case 'onboarding':
+          return log.agent_name === 'Onboarding Agent'
+        default:
+          return false
+      }
     })
-
-    const isNodeCompleted = (nodeId: string): boolean => {
-      const getStatus = (id: string) => {
-        const statusKeyMap: Record<string, string> = {
-          supervisor: 'supervisor',
-          planning: 'planning',
-          jd_agent: 'jd_generation',
-          human_approval: 'human_approval',
-          sourcing_agent: 'sourcing',
-          monitoring_agent: 'monitoring',
-          jd_optimization: 'jd_optimization',
-          screening_agent: 'screening',
-          human_review: 'human_review',
-          interview_agent: 'interview',
-          onboarding_agent: 'onboarding',
-        }
-        return workflowState?.agent_statuses?.[statusKeyMap[id] || ''] || 'idle'
-      }
-      const s = getStatus(nodeId)
-      return s === 'completed' || s === 'threshold_reached' || s === 'below_threshold'
-    }
-
-    return [
-      {
-        id: 'start-to-supervisor',
-        source: 'start',
-        target: 'supervisor',
-        type: 'smoothstep',
-        style: edgeStyle(true),
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1' },
-      },
-      {
-        id: 'supervisor-to-planning',
-        source: 'supervisor',
-        target: 'planning',
-        type: 'smoothstep',
-        style: edgeStyle(isNodeCompleted('supervisor')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('supervisor') ? '#10b981' : '#475569' },
-      },
-      {
-        id: 'planning-to-jd',
-        source: 'planning',
-        target: 'jd_agent',
-        type: 'smoothstep',
-        style: edgeStyle(isNodeCompleted('planning')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('planning') ? '#10b981' : '#475569' },
-      },
-      {
-        id: 'jd-to-approval',
-        source: 'jd_agent',
-        target: 'human_approval',
-        type: 'smoothstep',
-        style: edgeStyle(isNodeCompleted('jd_agent')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('jd_agent') ? '#10b981' : '#475569' },
-      },
-      {
-        id: 'approval-to-jd-reject',
-        source: 'human_approval',
-        sourceHandle: 'left-source',
-        target: 'jd_agent',
-        targetHandle: 'left-target',
-        type: 'smoothstep',
-        label: 'Rejected',
-        style: {
-          stroke: workflowState.agent_statuses?.['human_approval'] === 'idle' && workflowState.current_stage === 'jd_generation' ? '#ef4444' : 'rgba(239, 68, 68, 0.15)',
-          strokeWidth: 2,
-          strokeDasharray: '4,4',
-        },
-        labelStyle: { fill: '#ef4444', fontSize: '10px', fontWeight: 600 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' },
-      },
-      {
-        id: 'approval-to-sourcing',
-        source: 'human_approval',
-        target: 'sourcing_agent',
-        type: 'smoothstep',
-        label: 'Approved',
-        labelStyle: { fill: '#10b981', fontSize: '10px', fontWeight: 600 },
-        style: edgeStyle(isNodeCompleted('human_approval')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('human_approval') ? '#10b981' : '#475569' },
-      },
-      {
-        id: 'sourcing-to-monitoring',
-        source: 'sourcing_agent',
-        target: 'monitoring_agent',
-        type: 'smoothstep',
-        style: edgeStyle(isNodeCompleted('sourcing_agent')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('sourcing_agent') ? '#10b981' : '#475569' },
-      },
-      // Low Volume loop: monitoring_agent -> jd_optimization -> sourcing_agent
-      {
-        id: 'monitoring-to-optimization',
-        source: 'monitoring_agent',
-        sourceHandle: 'left-source',
-        target: 'jd_optimization',
-        type: 'smoothstep',
-        label: 'Count Low',
-        labelStyle: { fill: '#f59e0b', fontSize: '10px', fontWeight: 600 },
-        style: {
-          stroke: workflowState.agent_statuses?.['monitoring'] === 'below_threshold' ? '#f59e0b' : 'rgba(245, 158, 11, 0.15)',
-          strokeWidth: 2,
-          strokeDasharray: '4,4',
-        },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' },
-      },
-      {
-        id: 'optimization-to-sourcing',
-        source: 'jd_optimization',
-        sourceHandle: 'left-source',
-        target: 'sourcing_agent',
-        targetHandle: 'left-target',
-        type: 'smoothstep',
-        style: {
-          stroke: isNodeCompleted('jd_optimization') ? '#10b981' : 'rgba(255, 255, 255, 0.1)',
-          strokeWidth: isNodeCompleted('jd_optimization') ? 2 : 1.5,
-        },
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('jd_optimization') ? '#10b981' : '#475569' },
-      },
-      {
-        id: 'monitoring-to-screening',
-        source: 'monitoring_agent',
-        target: 'screening_agent',
-        type: 'smoothstep',
-        label: 'Sufficient',
-        labelStyle: { fill: '#10b981', fontSize: '10px', fontWeight: 600 },
-        style: edgeStyle(workflowState.agent_statuses?.['monitoring'] === 'threshold_reached' || isNodeCompleted('monitoring_agent')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('monitoring_agent') ? '#10b981' : '#475569' },
-      },
-      {
-        id: 'screening-to-review',
-        source: 'screening_agent',
-        target: 'human_review',
-        type: 'smoothstep',
-        style: edgeStyle(isNodeCompleted('screening_agent')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('screening_agent') ? '#10b981' : '#475569' },
-      },
-      {
-        id: 'review-to-interview',
-        source: 'human_review',
-        target: 'interview_agent',
-        type: 'smoothstep',
-        style: edgeStyle(isNodeCompleted('human_review')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('human_review') ? '#10b981' : '#475569' },
-      },
-      // Interview reject loop back to screening
-      {
-        id: 'interview-to-screening-reject',
-        source: 'interview_agent',
-        sourceHandle: 'right-source',
-        target: 'screening_agent',
-        targetHandle: 'right-target',
-        type: 'smoothstep',
-        label: 'Rejected',
-        labelStyle: { fill: '#ef4444', fontSize: '10px', fontWeight: 600 },
-        style: {
-          stroke: workflowState.agent_statuses?.['interview'] === 'failed' ? '#ef4444' : 'rgba(239, 68, 68, 0.15)',
-          strokeWidth: 2,
-          strokeDasharray: '4,4',
-        },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#ef4444' },
-      },
-      {
-        id: 'interview-to-onboarding',
-        source: 'interview_agent',
-        target: 'onboarding_agent',
-        type: 'smoothstep',
-        label: 'Selected',
-        labelStyle: { fill: '#10b981', fontSize: '10px', fontWeight: 600 },
-        style: edgeStyle(isNodeCompleted('interview_agent')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('interview_agent') ? '#10b981' : '#475569' },
-      },
-      {
-        id: 'onboarding-to-end',
-        source: 'onboarding_agent',
-        target: 'end',
-        type: 'smoothstep',
-        style: edgeStyle(isNodeCompleted('onboarding_agent')),
-        markerEnd: { type: MarkerType.ArrowClosed, color: isNodeCompleted('onboarding_agent') ? '#10b981' : '#475569' },
-      },
-    ]
-  }, [workflowState])
+  }
 
   return (
     <div style={{ padding: '24px', width: '100%', maxWidth: '1800px', margin: '0 auto', height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
@@ -637,27 +401,9 @@ export default function WorkflowMonitor() {
           <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
             <GitBranch size={22} color="#6366f1" /> Workflow Monitor
           </h1>
-          <p style={{ fontSize: '14px', color: '#64748b' }}>Real-time agent execution status and interactive workflow visualization</p>
+          <p style={{ fontSize: '14px', color: '#64748b' }}>Real-time agent execution status and detailed stage-by-stage pipelines</p>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {isStuckAtInterview && (
-            <button
-              onClick={() => retryInterviewMutation.mutate()}
-              disabled={retryInterviewMutation.isPending}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                background: 'rgba(99,102,241,0.12)', padding: '7px 14px',
-                borderRadius: '20px', border: '1px solid rgba(99,102,241,0.35)',
-                color: '#818cf8', fontSize: '12px', fontWeight: 600,
-                cursor: retryInterviewMutation.isPending ? 'not-allowed' : 'pointer',
-              }}
-            >
-              {retryInterviewMutation.isPending
-                ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
-                : <RefreshCw size={14} />}
-              Retry Interview
-            </button>
-          )}
           {workflowState && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(16,185,129,0.1)', padding: '6px 12px', borderRadius: '20px', border: '1px solid rgba(16,185,129,0.2)' }}>
               <span className="pulse-dot" style={{ background: '#10b981', width: '8px', height: '8px', borderRadius: '50%' }} />
@@ -743,13 +489,12 @@ export default function WorkflowMonitor() {
           )}
         </div>
 
-        {/* Center Column: React Flow Workflow Visualizer */}
+        {/* Right Column: Redesigned Workflow Stage Monitor */}
         <div style={{
           background: '#0a0a14',
           border: '1px solid rgba(255,255,255,0.06)',
           borderRadius: '14px',
           overflow: 'hidden',
-          position: 'relative',
           display: 'flex',
           flexDirection: 'column',
           height: '100%',
@@ -766,114 +511,427 @@ export default function WorkflowMonitor() {
           ) : (
             <>
               {/* Header banner */}
-              {workflowState && (
-                <div style={{
-                  background: '#0a0a14',
-                  borderBottom: '1px solid rgba(255,255,255,0.06)',
-                  padding: '12px 20px',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  flexShrink: 0,
-                  zIndex: 10,
-                  position: 'relative',
-                }}>
-                  <div>
-                    <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                      Current Workflow Stage
-                    </div>
-                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#e2e8f0', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#6366f1', display: 'inline-block', animation: 'pulse-dot 1.5s ease-in-out infinite' }} />
-                      {workflowState.current_stage.replace(/_/g, ' ').toUpperCase()}
-                    </div>
+              <div style={{
+                background: '#0e0e1c',
+                borderBottom: '1px solid rgba(255,255,255,0.06)',
+                padding: '16px 24px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexShrink: 0,
+                zIndex: 10,
+                position: 'relative',
+              }}>
+                <div>
+                  <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '1px' }}>
+                    Active Workflow Pipeline
                   </div>
                   {currentJob && (
-                    <div style={{ fontSize: '12px', color: '#8f9bb3', textAlign: 'right' }}>
-                      Goal: "{currentJob.hiring_goal}"
+                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#ffffff', marginTop: '4px' }}>
+                      {currentJob.title} <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 400 }}>({currentJob.department})</span>
+                    </div>
+                  )}
+                  {currentJob && (
+                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
+                      Goal: <span style={{ color: '#cbd5e1', fontStyle: 'italic' }}>"{currentJob.hiring_goal}"</span>
                     </div>
                   )}
                 </div>
-              )}
+                
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <button
+                    onClick={handleExpandAll}
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '6px',
+                      color: '#94a3b8',
+                      fontSize: '11px',
+                      padding: '4px 10px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Expand All
+                  </button>
+                  <button
+                    onClick={handleCollapseAll}
+                    style={{
+                      background: 'rgba(255,255,255,0.03)',
+                      border: '1px solid rgba(255,255,255,0.08)',
+                      borderRadius: '6px',
+                      color: '#94a3b8',
+                      fontSize: '11px',
+                      padding: '4px 10px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                    }}
+                  >
+                    Collapse All
+                  </button>
+                  
+                  {workflowState && (
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '6px 12px',
+                      background: workflowState.current_stage === 'completed' 
+                        ? 'rgba(16,185,129,0.1)' 
+                        : workflowState.current_stage === 'failed'
+                        ? 'rgba(239,68,68,0.1)'
+                        : 'rgba(99,102,241,0.1)',
+                      borderRadius: '20px',
+                      border: `1px solid ${
+                        workflowState.current_stage === 'completed'
+                          ? 'rgba(16,185,129,0.2)'
+                          : workflowState.current_stage === 'failed'
+                          ? 'rgba(239,68,68,0.2)'
+                          : 'rgba(99,102,241,0.2)'
+                      }`
+                    }}>
+                      <span className="pulse-dot" style={{
+                        background: workflowState.current_stage === 'completed' 
+                          ? '#10b981' 
+                          : workflowState.current_stage === 'failed'
+                          ? '#ef4444'
+                          : '#6366f1',
+                        width: '8px',
+                        height: '8px',
+                        borderRadius: '50%'
+                      }} />
+                      <span style={{
+                        fontSize: '11px',
+                        color: workflowState.current_stage === 'completed' 
+                          ? '#10b981' 
+                          : workflowState.current_stage === 'failed'
+                          ? '#ef4444'
+                          : '#818cf8',
+                        fontWeight: 600,
+                        textTransform: 'uppercase'
+                      }}>
+                        {workflowState.current_stage === 'completed' 
+                          ? 'Completed' 
+                          : workflowState.current_stage === 'failed'
+                          ? 'Failed'
+                          : `Active: ${workflowState.current_stage.replace(/_/g, ' ')}`}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-              <div style={{ width: '100%', height: 'calc(100vh - 200px)', minHeight: '500px' }}>
-                <ReactFlow
-                  nodes={nodes}
-                  edges={edges}
-                  nodeTypes={nodeTypes}
-                  fitView
-                  fitViewOptions={{ padding: 0.2 }}
-                  minZoom={0.2}
-                  maxZoom={1.5}
-                  nodesDraggable={false}
-                  panOnDrag={true}
-                  zoomOnScroll={true}
-                  attributionPosition="bottom-left"
-                  style={{ width: '100%', height: '100%' }}
-                >
-                  <Background color="rgba(255, 255, 255, 0.03)" gap={16} size={1} />
-                  <Controls showInteractive={true} style={{ background: 'rgba(15, 15, 26, 0.8)', border: '1px solid rgba(255,255,255,0.08)', color: '#e2e8f0', borderRadius: '8px' }} />
-                </ReactFlow>
+              {/* Scrollable list of workflow stages */}
+              <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                  {STAGES.map((stage, index) => {
+                    const stageState = getStageState(stage.id)
+                    const isCurrent = workflowState?.current_stage === stage.id
+                    const isExpanded = !!expandedStages[stage.id]
+                    const IconComponent = stage.icon
+                    
+                    // State configurations for styles
+                    const config = {
+                      completed: {
+                        circleBg: 'rgba(16, 185, 129, 0.12)',
+                        circleBorder: '#10b981',
+                        circleColor: '#10b981',
+                        badgeClass: 'badge-success',
+                        badgeText: 'Completed'
+                      },
+                      running: {
+                        circleBg: 'rgba(99, 102, 241, 0.15)',
+                        circleBorder: '#6366f1',
+                        circleColor: '#ffffff',
+                        badgeClass: 'badge-info',
+                        badgeText: 'Running'
+                      },
+                      waiting_approval: {
+                        circleBg: 'rgba(245, 158, 11, 0.15)',
+                        circleBorder: '#f59e0b',
+                        circleColor: '#f59e0b',
+                        badgeClass: 'badge-warning',
+                        badgeText: 'Awaiting Recruiter'
+                      },
+                      failed: {
+                        circleBg: 'rgba(239, 68, 68, 0.15)',
+                        circleBorder: '#ef4444',
+                        circleColor: '#ef4444',
+                        badgeClass: 'badge-danger',
+                        badgeText: 'Failed'
+                      },
+                      idle: {
+                        circleBg: 'rgba(255, 255, 255, 0.02)',
+                        circleBorder: 'rgba(255, 255, 255, 0.08)',
+                        circleColor: '#64748b',
+                        badgeClass: 'badge-neutral',
+                        badgeText: 'Pending'
+                      }
+                    }[stageState] || {
+                      circleBg: 'rgba(255, 255, 255, 0.02)',
+                      circleBorder: 'rgba(255, 255, 255, 0.08)',
+                      circleColor: '#64748b',
+                      badgeClass: 'badge-neutral',
+                      badgeText: 'Pending'
+                    }
+
+                    const stageLogs = getStageLogs(stage.id)
+
+                    return (
+                      <div key={stage.id} style={{ display: 'flex', gap: '20px' }}>
+                        {/* Left stepper connector */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '40px' }}>
+                          <div style={{
+                            width: '40px', height: '40px', borderRadius: '50%',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            background: config.circleBg, border: `2px solid ${isCurrent ? '#6366f1' : config.circleBorder}`,
+                            color: config.circleColor, zIndex: 2, transition: 'all 0.3s ease',
+                            boxShadow: isCurrent ? '0 0 12px rgba(99, 102, 241, 0.4)' : 'none',
+                            cursor: 'pointer'
+                          }}
+                          onClick={() => toggleStage(stage.id)}
+                          >
+                            <IconComponent size={18} style={{ animation: isCurrent && stageState === 'running' ? 'pulse-dot 1.5s ease-in-out infinite' : 'none' }} />
+                          </div>
+                          {index < STAGES.length - 1 && (
+                            <div style={{
+                              width: '2px',
+                              flexGrow: 1,
+                              background: getLineBg(stage.id),
+                              margin: '6px 0',
+                              minHeight: '40px',
+                              transition: 'all 0.3s ease'
+                            }} />
+                          )}
+                        </div>
+
+                        {/* Card Container */}
+                        <div style={{
+                          flex: 1,
+                          background: isCurrent 
+                            ? 'rgba(99, 102, 241, 0.04)' 
+                            : 'rgba(255, 255, 255, 0.01)',
+                          border: isCurrent 
+                            ? '1px solid rgba(99, 102, 241, 0.25)' 
+                            : '1px solid rgba(255, 255, 255, 0.05)',
+                          borderRadius: '12px',
+                          padding: isCurrent ? '20px 24px' : '16px 20px',
+                          marginBottom: '24px',
+                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                          boxShadow: isCurrent ? '0 4px 20px rgba(99, 102, 241, 0.08)' : 'none',
+                        }}>
+                          {/* Card Header */}
+                          <div 
+                            onClick={() => toggleStage(stage.id)}
+                            style={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center', 
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ 
+                                  fontSize: '13px', 
+                                  fontWeight: 500, 
+                                  color: '#64748b' 
+                                }}>
+                                  Step {(index + 1).toString().padStart(2, '0')} ·
+                                </span>
+                                <h3 style={{ 
+                                  fontSize: isCurrent ? '16px' : '15px', 
+                                  fontWeight: 600, 
+                                  color: isCurrent ? '#ffffff' : '#cbd5e1',
+                                  transition: 'color 0.2s ease'
+                                }}>
+                                  {stage.title}
+                                </h3>
+                              </div>
+                              <span style={{ fontSize: '12px', color: '#64748b' }}>
+                                Executing Agent: <span style={{ color: '#818cf8', fontWeight: 500 }}>{stage.agentName}</span>
+                              </span>
+                            </div>
+                            
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                              <span className={`badge ${config.badgeClass}`} style={{ fontSize: '11px', textTransform: 'capitalize' }}>
+                                {config.badgeText}
+                              </span>
+                              {isExpanded ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
+                            </div>
+                          </div>
+
+                          {/* Expanded Content */}
+                          {isExpanded && (
+                            <div style={{ 
+                              marginTop: '16px', 
+                              borderTop: '1px solid rgba(255, 255, 255, 0.04)', 
+                              paddingTop: '16px',
+                              animation: 'fadeIn 0.2s ease-out'
+                            }}>
+                              <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.5', marginBottom: '16px' }}>
+                                {stage.description}
+                              </p>
+
+                              {/* Checklist steps */}
+                              <div style={{ marginBottom: '20px' }}>
+                                <h4 style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
+                                  Process Execution Steps
+                                </h4>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                  {stage.subSteps.map((subStep, subIdx) => {
+                                    const subStepState = getSubStepState(stageState, subIdx)
+                                    
+                                    return (
+                                      <div key={subIdx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                        {subStepState === 'completed' && (
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)' }}>
+                                            <Check size={10} color="#10b981" strokeWidth={3} />
+                                          </div>
+                                        )}
+                                        {subStepState === 'active' && (
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px' }}>
+                                            <Loader2 size={12} color="#6366f1" className="animate-spin" />
+                                          </div>
+                                        )}
+                                        {subStepState === 'pending' && (
+                                          <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.15)' }} />
+                                        )}
+                                        {subStepState === 'failed' && (
+                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.15)' }}>
+                                            <XCircle size={12} color="#ef4444" />
+                                          </div>
+                                        )}
+                                        <span style={{ 
+                                          fontSize: '12px', 
+                                          color: subStepState === 'completed' 
+                                            ? '#94a3b8' 
+                                            : subStepState === 'active'
+                                            ? '#e2e8f0'
+                                            : '#4b5563',
+                                          fontWeight: subStepState === 'active' ? 500 : 400
+                                        }}>
+                                          {subStep}
+                                        </span>
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+
+                              {/* Specific log info */}
+                              {stageLogs.length > 0 && (
+                                <div style={{ 
+                                  background: 'rgba(0,0,0,0.2)', 
+                                  border: '1px solid rgba(255, 255, 255, 0.04)',
+                                  borderRadius: '8px', 
+                                  padding: '12px 16px' 
+                                }}>
+                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: '8px', marginBottom: '8px' }}>
+                                    <h4 style={{ fontSize: '11px', fontWeight: 600, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                      Execution Metrics
+                                    </h4>
+                                    <div style={{ display: 'flex', gap: '12px' }}>
+                                      <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                        Latency: <span style={{ color: '#e2e8f0', fontWeight: 500 }}>{stageLogs[0].latency_ms}ms</span>
+                                      </span>
+                                      {stageLogs[0].token_usage > 0 && (
+                                        <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                          Tokens: <span style={{ color: '#e2e8f0', fontWeight: 500 }}>{stageLogs[0].token_usage}</span>
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div>
+                                      <div style={{ fontSize: '10px', color: '#4b5563', fontWeight: 600, textTransform: 'uppercase' }}>Input Context</div>
+                                      <div style={{ fontSize: '12px', color: '#8892b0', marginTop: '2px' }}>{stageLogs[0].input_summary}</div>
+                                    </div>
+                                    <div>
+                                      <div style={{ fontSize: '10px', color: '#4b5563', fontWeight: 600, textTransform: 'uppercase' }}>Output Process Detail</div>
+                                      <div style={{ fontSize: '12px', color: '#a5b4fc', marginTop: '2px', fontWeight: 400 }}>{stageLogs[0].output_summary}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+
+                              {/* Special helper notes for Recruiter Approval / Review */}
+                              {stage.id === 'human_approval' && currentJob?.status === 'pending_approval' && (
+                                <div style={{ 
+                                  marginTop: '12px', padding: '12px', 
+                                  background: 'rgba(245, 158, 11, 0.08)', 
+                                  border: '1px solid rgba(245, 158, 11, 0.2)', 
+                                  borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' 
+                                }}>
+                                  <AlertTriangle size={14} color="#f59e0b" style={{ flexShrink: 0 }} />
+                                  <span style={{ fontSize: '11px', color: '#f59e0b' }}>
+                                    Recruiter review required. Please visit the **Roles** tab to review, edit, or approve the generated Job Description.
+                                  </span>
+                                </div>
+                              )}
+
+                              {stage.id === 'human_review' && getStageStatus('human_review') === 'waiting_approval' && (
+                                <div style={{ 
+                                  marginTop: '12px', padding: '12px', 
+                                  background: 'rgba(245, 158, 11, 0.08)', 
+                                  border: '1px solid rgba(245, 158, 11, 0.2)', 
+                                  borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' 
+                                }}>
+                                  <AlertTriangle size={14} color="#f59e0b" style={{ flexShrink: 0 }} />
+                                  <span style={{ fontSize: '11px', color: '#f59e0b' }}>
+                                    Recruiter shortlist validation required. Please navigate to the **Candidates** page to review scores and shortlist/reject applicants.
+                                  </span>
+                                </div>
+                              )}
+
+                              {/* Stuck at interview action */}
+                              {stage.id === 'interviewing' && isStuckAtInterview && (
+                                <div style={{ 
+                                  marginTop: '12px', padding: '12px', 
+                                  background: 'rgba(239, 68, 68, 0.08)', 
+                                  border: '1px solid rgba(239, 68, 68, 0.2)', 
+                                  borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' 
+                                }}>
+                                  <span style={{ fontSize: '12px', color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <AlertCircle size={14} style={{ flexShrink: 0 }} /> Interview simulation got stuck or failed.
+                                  </span>
+                                  <button
+                                    onClick={() => retryInterviewMutation.mutate()}
+                                    disabled={retryInterviewMutation.isPending}
+                                    style={{
+                                      display: 'flex', alignItems: 'center', gap: '6px',
+                                      background: '#ef4444', padding: '6px 12px',
+                                      borderRadius: '16px', border: 'none',
+                                      color: '#ffffff', fontSize: '11px', fontWeight: 600,
+                                      cursor: retryInterviewMutation.isPending ? 'not-allowed' : 'pointer',
+                                    }}
+                                  >
+                                    {retryInterviewMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+                                    Retry Simulation
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
             </>
           )}
-        </div>
-
-        {/* Right Column: Execution Logs */}
-        <div style={{
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: '14px',
-          padding: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          height: '100%',
-          width: '380px',
-          flexShrink: 0,
-        }}>
-          <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#94a3b8', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '12px', flexShrink: 0 }}>
-            <Clock size={15} /> Execution Logs
-          </h2>
-          <div style={{ overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {!logs?.length ? (
-              <p style={{ color: '#4a5568', fontSize: '13px', textAlign: 'center', padding: '32px 0' }}>
-                No logs yet. Start the workflow to see agent activity.
-              </p>
-            ) : (
-              logs.map(log => (
-                <div key={log.id} style={{
-                  background: 'rgba(0,0,0,0.2)',
-                  border: `1px solid ${log.status === 'success' ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)'}`,
-                  borderRadius: '8px', padding: '10px 12px',
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                    <span style={{ fontSize: '12px', fontWeight: 600, color: '#818cf8' }}>{log.agent_name}</span>
-                    <span style={{ fontSize: '11px', color: '#475569' }}>{log.latency_ms}ms</span>
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#8892b0' }}>{log.action}</div>
-                  <div style={{ fontSize: '11px', color: '#4b5563', marginTop: '4px' }}>{log.output_summary}</div>
-                </div>
-              ))
-            )}
-          </div>
         </div>
       </div>
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @keyframes dash {
-          to {
-            stroke-dashoffset: -20;
-          }
+        .animate-spin {
+          animation: spin 1s linear infinite;
         }
-        .react-flow__edge-path {
-          transition: stroke 0.3s ease, stroke-width 0.3s ease;
-        }
-        .react-flow__handle {
-          transition: background-color 0.2s ease;
-        }
-        .react-flow__handle:hover {
-          background-color: #6366f1 !important;
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(4px); }
+          to { opacity: 1; transform: translateY(0); }
         }
       `}</style>
     </div>

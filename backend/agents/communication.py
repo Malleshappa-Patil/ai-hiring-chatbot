@@ -59,7 +59,7 @@ def communication_node(state: HiringState) -> dict:
                 candidate_name=candidate_name,
                 interview_score=interview_score,
             )
-            response = llm.invoke([SystemMessage(content=prompt)])
+            response = llm.invoke(prompt)
             email_body = response.content.strip()
         except Exception as e:
             print(f"  [Communication] Error generating email for {candidate_name}: {e}")

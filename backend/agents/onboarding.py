@@ -129,7 +129,7 @@ def onboarding_node(state: HiringState) -> dict:
                 start_date=start_date,
                 employee_id=employee_id,
             )
-            response = llm.invoke([SystemMessage(content=prompt)])
+            response = llm.invoke(prompt)
             welcome_email = response.content.strip()
         except Exception as e:
             print(f"    [Onboarding] Error generating welcome email: {e}")
