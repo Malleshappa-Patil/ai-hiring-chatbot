@@ -344,26 +344,52 @@ async def _generate_jd_in_session(session: dict) -> str:
     skills_str = ", ".join(skills) if isinstance(skills, list) else str(skills) if skills else "Not specified"
     feedback = hr.get("jd_feedback", "")
 
-    jd_prompt = f"""Generate a professional Job Description for:
-Job Title: {hr.get('job_title', 'Software Engineer')}
-Required Skills/Technologies: {skills_str}
-Experience: {hr.get('experience_years', '3+ years')}
-Budget: {hr.get('budget', 'Competitive')}
-Location: {hr.get('location', 'Remote')}
-Positions Available: {hr.get('candidates_needed', 1)}
-Additional Requirements: {hr.get('additional_requirements', 'None')}
-{f'Previous Feedback to Address: {feedback}' if feedback else ''}
+    # Detect if user explicitly asked for more detail / a longer JD
+    additional = hr.get("additional_requirements", "") or ""
+    user_wants_long = any(kw in additional.lower() for kw in [
+        "detailed", "elaborate", "comprehensive", "long", "full", "extensive",
+        "in-depth", "include everything", "all sections", "more sections",
+    ])
 
-Create a complete, attractive JD with:
-1. Job Title & Overview
-2. Key Responsibilities (8-10 points)
-3. Required Skills & Technologies (match exactly what was specified)
-4. Good to Have Skills
-5. Experience Requirements
-6. What We Offer (benefits, culture, growth)
-7. How to Apply
+    size_note = (
+        "The user explicitly requested a detailed / comprehensive JD — include all sections "
+        "and expand each one with thorough, specific content."
+        if user_wants_long else
+        "Keep the JD CONCISE. Use at most 5 bullet points per section. "
+        "Do NOT pad or add generic filler. Every bullet must be specific to this exact role and stack."
+    )
 
-Format in clean Markdown. Make it compelling and specific to the technologies mentioned.
+    jd_prompt = f"""You are a senior technical recruiter writing a real, professional Job Description.
+
+## Hiring Details
+- **Role:** {hr.get('job_title', 'Software Engineer')}
+- **Required Skills:** {skills_str}
+- **Experience:** {hr.get('experience_years', '3+ years')}
+- **Location:** {hr.get('location', 'Remote')}
+- **Salary / Budget:** {hr.get('budget', 'Competitive')}
+- **Openings:** {hr.get('candidates_needed', 1)}
+{f"- **Additional context:** {additional}" if additional and additional.strip().lower() not in ['none', 'na', 'n/a', ''] else ""}
+{f"- **Revise based on this feedback:** {feedback}" if feedback else ""}
+
+## Output Rules — FOLLOW STRICTLY
+1. Write ONLY content directly relevant to this specific role and the listed tech stack.
+2. NEVER use generic buzzwords: no "fast-paced", "passion for excellence", "wear many hats", "rockstar", "ninja", "synergy", "dynamic team", "go-getter".
+3. Do NOT invent or assume company perks, culture, or benefits that were not provided. Omit a "What We Offer" section entirely unless the user gave specific benefit details.
+4. Do NOT include a "How to Apply" section unless the user explicitly asked for one.
+5. Every responsibility and skill bullet must be concrete, actionable, and specific to {hr.get('job_title', 'the role')} using {skills_str}.
+6. {size_note}
+7. Use clean Markdown: `##` for headings, `**label:**` for inline labels, `-` for bullet points.
+8. Start directly with the JD — no preamble like "Here is the JD:", "Sure!", or "Certainly!".
+9. The top of the JD must show: Role, Location, Experience, Salary, and Openings as a compact info block.
+
+## Sections to Include (in this order)
+1. **[Role Title]** — one-liner tagline describing the role
+2. **Overview** — 2–3 sentences: what the person owns, who they work with, impact of the role
+3. **Key Responsibilities** — concrete duties using the specified stack
+4. **Required Skills & Experience** — only the explicitly provided skills and experience levels
+5. **Good to Have** — optional, ≤3 items, only if genuinely relevant to the stack; skip if nothing fits
+
+Write the Job Description now:
 """
 
     try:
@@ -766,63 +792,107 @@ async def download_jd_pdf(session_id: str):
     # Generate PDF using PyMuPDF (fitz)
     try:
         import fitz
+
+        def _strip_inline_bold(s: str) -> str:
+            """Remove **...** markers and return plain text (used for width estimation)."""
+            return re.sub(r'\*\*(.+?)\*\*', r'\1', s)
+
+        def _parse_bold_segments(s: str):
+            """
+            Split a string into segments: [(text, is_bold), ...]
+            e.g. '**Foo:** bar' -> [('Foo:', True), (' bar', False)]
+            """
+            segments = []
+            pattern = re.compile(r'\*\*(.+?)\*\*')
+            last = 0
+            for m in pattern.finditer(s):
+                if m.start() > last:
+                    segments.append((s[last:m.start()], False))
+                segments.append((m.group(1), True))
+                last = m.end()
+            if last < len(s):
+                segments.append((s[last:], False))
+            return segments if segments else [(s, False)]
+
+        def _insert_mixed_line(page, x_start, y, line_text, base_fontsize, base_bold, color, max_width):
+            """
+            Insert a line that may contain inline **bold** segments.
+            Returns the new y position after inserting.
+            """
+            segments = _parse_bold_segments(line_text)
+            x = x_start
+            # Estimate character width (approx)
+            char_w = base_fontsize * 0.5
+            for seg_text, seg_bold in segments:
+                fn = "helvetica-bold" if (base_bold or seg_bold) else "helvetica"
+                # Check if we need to wrap — simple approach: write word by word
+                words = seg_text.split(' ')
+                for i, word in enumerate(words):
+                    token = word if i == len(words) - 1 else word + ' '
+                    token_w = len(token) * char_w
+                    if x + token_w > x_start + max_width and x > x_start:
+                        x = x_start
+                        y += base_fontsize + 4
+                    if token.strip():
+                        page.insert_text((x, y), token, fontsize=base_fontsize, fontname=fn, color=color)
+                    x += token_w
+            return y + base_fontsize + 4
+
         doc = fitz.open()
         page = doc.new_page()
         margin = 50
         width = page.rect.width - (margin * 2)
-        
+
         y = margin + 20
-        
+
         # Title
         page.insert_text((margin, y), title, fontsize=16, fontname="helvetica-bold", color=(0.1, 0.1, 0.4))
         y += 30
-        
+
         for line in text.split("\n"):
             line = line.strip()
             if not line:
-                y += 10
+                y += 8
                 continue
-                
+
             if y > page.rect.height - margin - 30:
                 page = doc.new_page()
                 y = margin + 20
-                
+
             fontsize = 10
-            fontname = "helvetica"
+            is_heading = False
             color = (0.2, 0.2, 0.2)
-            
+
             if line.startswith("# "):
-                fontsize = 14
-                fontname = "helvetica-bold"
                 line = line[2:]
+                fontsize = 14
+                is_heading = True
+                color = (0.1, 0.1, 0.4)
                 y += 8
             elif line.startswith("## "):
-                fontsize = 12
-                fontname = "helvetica-bold"
                 line = line[3:]
+                fontsize = 12
+                is_heading = True
+                color = (0.15, 0.15, 0.35)
                 y += 6
             elif line.startswith("### "):
-                fontsize = 11
-                fontname = "helvetica-bold"
                 line = line[4:]
+                fontsize = 11
+                is_heading = True
+                color = (0.2, 0.2, 0.3)
                 y += 4
             elif line.startswith("- ") or line.startswith("* "):
                 page.insert_text((margin, y), "•", fontsize=10, fontname="helvetica", color=(0.3, 0.3, 0.3))
-                text_rect = fitz.Rect(margin + 15, y - 8, margin + width, y + 100)
-                page.insert_textbox(text_rect, line[2:], fontsize=fontsize, fontname=fontname, color=color)
-                num_lines = len(line[2:]) // 70 + 1
-                y += num_lines * 14
+                line = line[2:]
+                y = _insert_mixed_line(page, margin + 15, y, line, fontsize, False, color, width - 15)
                 continue
-                
-            text_rect = fitz.Rect(margin, y - 8, margin + width, y + 100)
-            page.insert_textbox(text_rect, line, fontsize=fontsize, fontname=fontname, color=color)
-            num_lines = len(line) // 80 + 1
-            y += num_lines * 14
-            
+
+            y = _insert_mixed_line(page, margin, y, line, fontsize, is_heading, color, width)
+
         file_stream = io.BytesIO()
         doc.save(file_stream)
         file_stream.seek(0)
-        
+
         headers = {
             "Content-Disposition": f"attachment; filename=JD_{session_id[:8]}.pdf",
             "Access-Control-Expose-Headers": "Content-Disposition"
@@ -847,28 +917,48 @@ async def download_jd_docx(session_id: str):
     
     try:
         from docx import Document
+        from docx.shared import Pt, RGBColor
+
+        def _add_paragraph_with_bold(doc_obj, raw_line: str, style=None):
+            """
+            Add a paragraph to the docx, parsing **bold** inline markers
+            so they are rendered as actual bold runs instead of raw asterisks.
+            """
+            para = doc_obj.add_paragraph(style=style) if style else doc_obj.add_paragraph()
+            pattern = re.compile(r'\*\*(.+?)\*\*')
+            last = 0
+            for m in pattern.finditer(raw_line):
+                if m.start() > last:
+                    para.add_run(raw_line[last:m.start()])
+                bold_run = para.add_run(m.group(1))
+                bold_run.bold = True
+                last = m.end()
+            if last < len(raw_line):
+                para.add_run(raw_line[last:])
+            return para
+
         doc = Document()
         doc.add_heading(title, level=1)
-        
+
         for line in text.split("\n"):
             line = line.strip()
             if not line:
                 continue
             if line.startswith("# "):
-                doc.add_heading(line[2:], level=1)
+                doc.add_heading(re.sub(r'\*\*(.+?)\*\*', r'\1', line[2:]), level=1)
             elif line.startswith("## "):
-                doc.add_heading(line[3:], level=2)
+                doc.add_heading(re.sub(r'\*\*(.+?)\*\*', r'\1', line[3:]), level=2)
             elif line.startswith("### "):
-                doc.add_heading(line[4:], level=3)
+                doc.add_heading(re.sub(r'\*\*(.+?)\*\*', r'\1', line[4:]), level=3)
             elif line.startswith("- ") or line.startswith("* "):
-                doc.add_paragraph(line[2:], style='List Bullet')
+                _add_paragraph_with_bold(doc, line[2:], style='List Bullet')
             else:
-                doc.add_paragraph(line)
-                
+                _add_paragraph_with_bold(doc, line)
+
         file_stream = io.BytesIO()
         doc.save(file_stream)
         file_stream.seek(0)
-        
+
         headers = {
             "Content-Disposition": f"attachment; filename=JD_{session_id[:8]}.docx",
             "Access-Control-Expose-Headers": "Content-Disposition"
