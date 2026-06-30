@@ -80,23 +80,6 @@ export default function Layout() {
               <div style={{ fontSize: '11px', color: '#64748b' }}>Platform</div>
             </div>
           )}
-          <button
-            onClick={() => setCollapsed(!collapsed)}
-            style={{
-              marginLeft: 'auto',
-              background: 'none',
-              border: 'none',
-              color: '#64748b',
-              cursor: 'pointer',
-              padding: '4px',
-              borderRadius: '6px',
-              display: 'flex',
-              alignItems: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {collapsed ? <Menu size={18} /> : <X size={18} />}
-          </button>
         </div>
 
         {/* Nav */}
@@ -165,6 +148,40 @@ export default function Layout() {
           </button>
         </div>
       </aside>
+
+      {/* ── Sidebar Toggle Button — always visible, floats on sidebar edge ── */}
+      <button
+        onClick={() => setCollapsed(!collapsed)}
+        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+        style={{
+          position: 'fixed',
+          top: '20px',
+          left: collapsed ? '84px' : '272px',
+          zIndex: 100,
+          width: '28px',
+          height: '28px',
+          borderRadius: '50%',
+          background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
+          border: '2px solid rgba(255,255,255,0.15)',
+          color: 'white',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          boxShadow: '0 2px 12px rgba(99,102,241,0.5)',
+          transition: 'left 0.25s ease, transform 0.2s ease',
+          outline: 'none',
+        }}
+        onMouseEnter={e => {
+          ;(e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.15)'
+        }}
+        onMouseLeave={e => {
+          ;(e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
+        }}
+      >
+        {collapsed ? <Menu size={14} /> : <X size={14} />}
+      </button>
+
 
       {/* ── Main Content ──────────────────────────────────────── */}
       <main
