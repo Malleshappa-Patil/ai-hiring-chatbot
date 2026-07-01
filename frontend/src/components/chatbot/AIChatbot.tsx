@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import ReactMarkdown from 'react-markdown'
 import {
   Bot,
@@ -248,6 +249,7 @@ export default function AIChatbot() {
   const [jdContent, setJdContent] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const queryClient = useQueryClient()
 
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -365,6 +367,8 @@ export default function AIChatbot() {
 
       if (response.workflow_triggered) {
         setWorkflowTriggered(true)
+        // Invalidate jobs cache so Job Management shows the new job immediately
+        queryClient.invalidateQueries({ queryKey: ['jobs'] })
       }
     } catch (err) {
       removeTypingIndicator(typingId)

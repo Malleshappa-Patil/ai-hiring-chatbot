@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { jobsApi, workflowApi } from '@/api'
 import { Plus, Briefcase, CheckCircle, XCircle, Edit3, Play, Loader2, Trash2 } from 'lucide-react'
@@ -231,10 +232,11 @@ export default function JobManagement() {
                   borderRadius: '10px', padding: '16px',
                   maxHeight: '320px', overflowY: 'auto',
                   fontSize: '13px', color: '#cbd5e1', lineHeight: 1.7,
-                  whiteSpace: 'pre-wrap',
                   marginBottom: '16px',
                 }}>
-                  {jd.content}
+                  <div className="jd-markdown">
+                    <ReactMarkdown>{jd.content}</ReactMarkdown>
+                  </div>
                 </div>
 
                 {jd.status === 'pending_approval' && (
@@ -388,7 +390,37 @@ export default function JobManagement() {
           </div>
         </div>
       )}
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .jd-markdown p { margin: 0 0 8px 0; color: #cbd5e1; }
+        .jd-markdown p:last-child { margin-bottom: 0; }
+        .jd-markdown h1, .jd-markdown h2, .jd-markdown h3, .jd-markdown h4 {
+          color: #e2e8f0;
+          font-size: 14px;
+          font-weight: 700;
+          margin: 14px 0 6px 0;
+          padding-bottom: 4px;
+          border-bottom: 1px solid rgba(255,255,255,0.07);
+        }
+        .jd-markdown ul, .jd-markdown ol { margin: 6px 0 10px 18px; padding: 0; }
+        .jd-markdown li { margin-bottom: 4px; color: #cbd5e1; }
+        .jd-markdown strong { color: #c4b5fd; font-weight: 600; }
+        .jd-markdown em { color: #a5b4fc; }
+        .jd-markdown hr { border: none; border-top: 1px solid rgba(99,102,241,0.2); margin: 10px 0; }
+        .jd-markdown code {
+          background: rgba(99,102,241,0.15);
+          padding: 1px 5px;
+          border-radius: 4px;
+          font-size: 12px;
+          color: #a5b4fc;
+        }
+        .jd-markdown blockquote {
+          border-left: 3px solid rgba(99,102,241,0.5);
+          padding-left: 10px;
+          margin: 8px 0;
+          color: #94a3b8;
+        }
+      `}</style>
     </div>
   )
 }
