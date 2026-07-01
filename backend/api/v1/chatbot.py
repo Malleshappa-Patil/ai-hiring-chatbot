@@ -468,6 +468,60 @@ async def _trigger_hiring_workflow(session: dict) -> str:
     except Exception as e:
         print(f"[Chatbot] Workflow trigger error: {e}")
 
+    # ── Persist a Job record so it appears in Job Management ─────────────────
+    try:
+        from backend.database.session import AsyncSessionLocal
+        from backend.database.models import Job, JobDescription, User
+        from sqlalchemy import select as _select
+
+        # Map human-readable job type strings to DB enum values
+        _job_type_map = {
+            "full time": "full_time", "fulltime": "full_time",
+            "part time": "part_time", "parttime": "part_time",
+            "contract": "contract", "freelance": "contract",
+            "remote": "remote",
+        }
+        raw_job_type = str(hr.get("job_type", "")).lower().strip()
+        job_type_val = _job_type_map.get(raw_job_type, "full_time")
+
+        async with AsyncSessionLocal() as db:
+            # Use the first active user as creator (chatbot has no auth context)
+            user_result = await db.execute(
+                _select(User).where(User.is_active == True).limit(1)
+            )
+            first_user = user_result.scalar_one_or_none()
+            creator_id = first_user.id if first_user else "chatbot"
+
+            job = Job(
+                title=job_title,
+                department=str(hr.get("department", "General")),
+                location=str(hr.get("location", "Not specified")),
+                job_type=job_type_val,
+                experience_level=str(hr.get("experience_years", "Not specified")),
+                hiring_goal=f"Hire {hr.get('candidates_needed', 1)} {job_title}(s)",
+                target_candidate_count=int(hr.get("candidates_needed", 1)),
+                status="approved",
+                created_by=creator_id,
+            )
+            db.add(job)
+            await db.flush()  # get job.id before commit
+
+            if session.get("jd_content"):
+                jd = JobDescription(
+                    job_id=job.id,
+                    content=session["jd_content"],
+                    version=1,
+                    status="approved",
+                )
+                db.add(jd)
+
+            # Store the real DB job_id back into the session for reference
+            session["db_job_id"] = job.id
+            await db.commit()
+            print(f"[Chatbot] ✅ Job record created in DB: {job.id} ({job_title})")
+    except Exception as e:
+        print(f"[Chatbot] ⚠️  Failed to persist Job to DB: {e}")
+
     return workflow_id
 
 
