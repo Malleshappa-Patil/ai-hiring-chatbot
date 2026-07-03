@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { workflowApi, jobsApi } from '@/api'
 import {
@@ -113,6 +113,11 @@ export default function WorkflowMonitor() {
   const [selectedNode, setSelectedNode] = useState<NodeDef | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [dashOffset, setDashOffset] = useState(0)
+  const [zoom, setZoom] = useState(0.85)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const panStart = useRef({ mx: 0, my: 0, px: 0, py: 0 })
+  const canvasRef = useRef<HTMLDivElement>(null)
   const qc = useQueryClient()
 
   const { data: jobs } = useQuery({ queryKey: ['jobs'], queryFn: () => jobsApi.list({ page_size: 50 }) })
@@ -148,6 +153,39 @@ export default function WorkflowMonitor() {
     const id = setInterval(() => setDashOffset(v => (v - 1) % 24), 50)
     return () => clearInterval(id)
   }, [])
+
+  // Wheel zoom centred on cursor
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    e.preventDefault()
+    const rect = canvasRef.current!.getBoundingClientRect()
+    const mx = e.clientX - rect.left
+    const my = e.clientY - rect.top
+    const delta = e.deltaY > 0 ? 0.9 : 1.1
+    setZoom(z => {
+      const next = Math.min(2.5, Math.max(0.25, z * delta))
+      // Adjust pan so zoom is centred on mouse
+      const scale = next / z
+      setPan(p => ({
+        x: mx - scale * (mx - p.x),
+        y: my - scale * (my - p.y),
+      }))
+      return next
+    })
+  }
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    setIsPanning(true)
+    panStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y }
+  }
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isPanning) return
+    setPan({
+      x: panStart.current.px + (e.clientX - panStart.current.mx),
+      y: panStart.current.py + (e.clientY - panStart.current.my),
+    })
+  }
+  const stopPan = () => setIsPanning(false)
 
   const currentJob = jobs?.items?.find(j => j.id === selectedJobId)
 
@@ -306,11 +344,32 @@ export default function WorkflowMonitor() {
             {/* Canvas + Detail panel */}
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
-              {/* SVG canvas with icon overlay — ONLY this area pans/scrolls */}
-              <div style={{ flex: 1, overflow: 'auto', position: 'relative', minWidth: 0 }}>
-                <svg viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`} width={CANVAS_W} height={CANVAS_H} style={{ display: 'block', minWidth: CANVAS_W }}>
+              {/* SVG canvas — ONLY this area zooms/pans */}
+              <div
+                ref={canvasRef}
+                onWheel={handleWheel}
+                onMouseDown={handleMouseDown}
+                onMouseMove={handleMouseMove}
+                onMouseUp={stopPan}
+                onMouseLeave={stopPan}
+                style={{
+                  flex: 1, overflow: 'hidden', position: 'relative', minWidth: 0,
+                  cursor: isPanning ? 'grabbing' : 'grab',
+                  userSelect: 'none',
+                }}
+              >
+                {/* Transformed graph world */}
+                <div style={{
+                  transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+                  transformOrigin: '0 0',
+                  width: CANVAS_W,
+                  height: CANVAS_H,
+                  position: 'absolute',
+                  top: 0, left: 0,
+                }}>
+                <svg viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`} width={CANVAS_W} height={CANVAS_H} style={{ display: 'block' }}>
                   <defs>
-                    {/* Glow filters */}
+                    {/* Glow filters for nodes */}
                     {[
                       { id: 'glow-green',  r: '0.06', g: '0.73', b: '0.51' },
                       { id: 'glow-indigo', r: '0.39', g: '0.40', b: '0.95' },
@@ -323,31 +382,27 @@ export default function WorkflowMonitor() {
                         <feMerge><feMergeNode in="c" /><feMergeNode in="SourceGraphic" /></feMerge>
                       </filter>
                     ))}
-
-                    {/* Arrow markers */}
+                    {/* Edge glow filter — wider blur applied to edge paths */}
+                    <filter id="edge-glow-green" x="-40%" y="-40%" width="180%" height="180%">
+                      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+                      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.06  0 0 0 0 0.73  0 0 0 0 0.51  0 0 0 0.7 0" result="c" />
+                      <feMerge><feMergeNode in="c" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
+                    <filter id="edge-glow-indigo" x="-40%" y="-40%" width="180%" height="180%">
+                      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur" />
+                      <feColorMatrix in="blur" type="matrix" values="0 0 0 0 0.39  0 0 0 0 0.40  0 0 0 0 0.95  0 0 0 0.7 0" result="c" />
+                      <feMerge><feMergeNode in="c" /><feMergeNode in="SourceGraphic" /></feMerge>
+                    </filter>
+                    {/* Arrow markers — solid colors work everywhere */}
                     {[
-                      { id: 'arr-done',    fill: '#10b981' },
-                      { id: 'arr-run',     fill: '#6366f1' },
-                      { id: 'arr-idle',    fill: 'rgba(255,255,255,0.15)' },
+                      { id: 'arr-done', fill: '#10b981' },
+                      { id: 'arr-run',  fill: '#6366f1' },
+                      { id: 'arr-idle', fill: 'rgba(255,255,255,0.18)' },
                     ].map(m => (
                       <marker key={m.id} id={m.id} markerWidth="8" markerHeight="8" refX="5" refY="3" orient="auto">
                         <path d="M0,0 L0,6 L8,3 z" fill={m.fill} />
                       </marker>
                     ))}
-
-                    {/* Edge gradients */}
-                    <linearGradient id="eg-done" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.9" />
-                      <stop offset="100%" stopColor="#10b981" stopOpacity="0.25" />
-                    </linearGradient>
-                    <linearGradient id="eg-run" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="#6366f1" stopOpacity="0.9" />
-                      <stop offset="100%" stopColor="#6366f1" stopOpacity="0.2" />
-                    </linearGradient>
-                    <linearGradient id="eg-idle" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" stopColor="rgba(255,255,255,0.1)" />
-                      <stop offset="100%" stopColor="rgba(255,255,255,0.03)" />
-                    </linearGradient>
                   </defs>
 
                   {/* Dot grid */}
@@ -357,7 +412,7 @@ export default function WorkflowMonitor() {
                     ))
                   )}
 
-                  {/* Edges */}
+                  {/* Edges — solid colors (gradient url() silently breaks on diagonal/horizontal paths) */}
                   {NODES.flatMap(from =>
                     from.connects.map(tid => {
                       const to = NODES.find(n => n.id === tid)
@@ -365,21 +420,30 @@ export default function WorkflowMonitor() {
                       const fs = getState(from.id)
                       const isDone = fs === 'completed'
                       const isRun = fs === 'running'
+                      const edgeColor = isDone ? '#10b981' : isRun ? '#6366f1' : 'rgba(255,255,255,0.13)'
                       return (
                         <g key={`e-${from.id}-${tid}`}>
-                          {/* Glow track for active edges */}
+                          {/* Blurred glow underneath — works on any path direction */}
                           {(isDone || isRun) && (
-                            <path d={edgePath(from, to)} fill="none" stroke={isDone ? '#10b981' : '#6366f1'} strokeWidth={6} opacity={0.06} />
+                            <path
+                              d={edgePath(from, to)}
+                              fill="none"
+                              stroke={isDone ? '#10b981' : '#6366f1'}
+                              strokeWidth={8}
+                              opacity={0.2}
+                              filter={isDone ? 'url(#edge-glow-green)' : 'url(#edge-glow-indigo)'}
+                            />
                           )}
+                          {/* Solid stroke — always visible regardless of path direction */}
                           <path
                             d={edgePath(from, to)}
                             fill="none"
-                            stroke={isDone ? 'url(#eg-done)' : isRun ? 'url(#eg-run)' : 'url(#eg-idle)'}
-                            strokeWidth={isDone ? 2 : isRun ? 2 : 1.5}
+                            stroke={edgeColor}
+                            strokeWidth={isDone ? 2.2 : isRun ? 2.2 : 1.5}
+                            strokeOpacity={isDone ? 0.85 : isRun ? 0.9 : 1}
                             strokeDasharray={isRun ? '8 5' : 'none'}
                             strokeDashoffset={isRun ? dashOffset : 0}
                             markerEnd={isDone ? 'url(#arr-done)' : isRun ? 'url(#arr-run)' : 'url(#arr-idle)'}
-                            filter={isDone ? 'url(#glow-green)' : isRun ? 'url(#glow-indigo)' : ''}
                           />
                         </g>
                       )
@@ -452,28 +516,50 @@ export default function WorkflowMonitor() {
                     )
                   })}
                 </svg>
+                </div>{/* end transform world */}
 
-                {/* Icon overlays (React components can't render inside SVG directly) */}
+                {/* Icon overlays positioned over SVG nodes */}
                 <div style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
                   {NODES.map(node => {
                     const state = getState(node.id)
                     const c = stateColors(state)
                     const Icon = node.icon
+                    const screenX = pan.x + colX(node.col) * zoom + 2 * zoom
+                    const screenY = pan.y + rowY(node.row) * zoom + (NH / 2 - 8) * zoom
                     return (
-                      <div key={`ico-${node.id}`} style={{ position: 'absolute', left: colX(node.col) + 2, top: rowY(node.row) + NH / 2 - 8, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <div key={`ico-${node.id}`} style={{ position: 'absolute', left: screenX, top: screenY, width: 16 * zoom, height: 16 * zoom, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
                         {state === 'running'
-                          ? <Loader2 size={13} color={c.stroke} style={{ animation: 'spin 1s linear infinite' }} />
+                          ? <Loader2 size={13 * zoom} color={c.stroke} style={{ animation: 'spin 1s linear infinite' }} />
                           : state === 'completed'
-                          ? <CheckCircle2 size={13} color={c.stroke} />
+                          ? <CheckCircle2 size={13 * zoom} color={c.stroke} />
                           : state === 'failed'
-                          ? <XCircle size={13} color={c.stroke} />
+                          ? <XCircle size={13 * zoom} color={c.stroke} />
                           : state === 'waiting_approval'
-                          ? <AlertCircle size={13} color={c.stroke} />
-                          : <Icon size={13} color={c.stroke} />
+                          ? <AlertCircle size={13 * zoom} color={c.stroke} />
+                          : <Icon size={13 * zoom} color={c.stroke} />
                         }
                       </div>
                     )
                   })}
+                </div>
+
+                {/* Zoom controls */}
+                <div style={{ position: 'absolute', bottom: 14, right: 14, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
+                  {[{ label: '+', action: () => setZoom(z => Math.min(2.5, z * 1.2)) },
+                    { label: '−', action: () => setZoom(z => Math.max(0.25, z / 1.2)) },
+                    { label: '⊙', action: () => { setZoom(0.85); setPan({ x: 0, y: 0 }) } },
+                  ].map(btn => (
+                    <button key={btn.label} onClick={btn.action}
+                      onMouseDown={e => e.stopPropagation()}
+                      style={{
+                        width: 30, height: 30, borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)',
+                        background: 'rgba(12,12,28,0.92)', color: '#94a3b8', fontSize: 16, fontWeight: 700,
+                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        backdropFilter: 'blur(6px)',
+                      }}
+                    >{btn.label}</button>
+                  ))}
+                  <div style={{ fontSize: 9, color: '#374151', textAlign: 'center', marginTop: 2 }}>{Math.round(zoom * 100)}%</div>
                 </div>
               </div>
 
