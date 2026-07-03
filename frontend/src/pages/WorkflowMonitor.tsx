@@ -1,939 +1,647 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { workflowApi, jobsApi } from '@/api'
-import { 
-  GitBranch, 
-  Activity, 
-  Clock, 
-  CheckCircle2, 
-  XCircle, 
-  AlertCircle, 
-  Loader2, 
-  Briefcase, 
-  RefreshCw, 
-  ChevronDown, 
-  ChevronUp, 
-  Check, 
-  Lock, 
-  Play, 
-  ClipboardList, 
-  FileText, 
-  UserCheck, 
-  Send, 
-  Eye, 
-  Search, 
-  Users, 
-  Video, 
+import {
+  GitBranch,
+  Activity,
+  CheckCircle2,
+  XCircle,
+  AlertCircle,
+  Loader2,
+  Briefcase,
+  RefreshCw,
+  ClipboardList,
+  FileText,
+  UserCheck,
+  Send,
+  Eye,
+  Search,
+  Users,
+  Video,
   UserPlus,
-  AlertTriangle
+  AlertTriangle,
+  ChevronRight,
+  X,
+  Zap,
+  Brain,
+  Bot
 } from 'lucide-react'
 import type { JobStatus, AgentLog } from '@/types'
 import toast from 'react-hot-toast'
 
-const jobStatusColor: Record<JobStatus, string> = {
-  draft: '#64748b',
-  generating_jd: '#6366f1',
-  pending_approval: '#f59e0b',
-  approved: '#10b981',
-  published: '#3b82f6',
-  monitoring: '#8b5cf6',
-  screening: '#ec4899',
-  interviewing: '#14b8a6',
-  onboarding: '#a855f7',
-  closed: '#ef4444',
-}
+/* ─── Types ──────────────────────────────────────────────── */
+type StageState = 'idle' | 'running' | 'completed' | 'failed' | 'waiting_approval'
 
-const jobStatusLabel: Record<JobStatus, string> = {
-  draft: 'Draft',
-  generating_jd: 'JD Generation',
-  pending_approval: 'Pending Approval',
-  approved: 'Approved',
-  published: 'Published',
-  monitoring: 'Monitoring',
-  screening: 'Screening',
-  interviewing: 'Interviewing',
-  onboarding: 'Onboarding',
-  closed: 'Closed',
-}
-
-interface StageConfig {
+interface NodeDef {
   id: string
   title: string
+  shortTitle: string
   agentName: string
+  agentType: 'ai' | 'human'
   description: string
   icon: any
   subSteps: string[]
+  col: number
+  row: number
+  connects: string[]
 }
 
-const STAGES: StageConfig[] = [
-  {
-    id: 'supervisor',
-    title: 'Workflow Initiation & Orchestration',
-    agentName: 'Supervisor Agent',
-    description: 'Orchestrates the recruitment flow and delegates tasks based on hiring goals.',
-    icon: Play,
-    subSteps: [
-      'Parse hiring goal and parameters',
-      'Initialize workflow session and database entry',
-      'Delegate execution planning to Planning Agent'
-    ]
-  },
-  {
-    id: 'planning',
-    title: 'Recruitment Planning',
-    agentName: 'Planning Agent',
-    description: 'Converts recruiting goals into structured pipeline milestones.',
-    icon: ClipboardList,
-    subSteps: [
-      'Analyze job requirements and timeline constraints',
-      'Formulate recruitment stage sequence and candidate targets',
-      'Save plan topology to short-term memory'
-    ]
-  },
-  {
-    id: 'jd_generation',
-    title: 'Job Description Drafting',
-    agentName: 'JD Agent',
-    description: 'Generates professional, AI-optimized Job Descriptions matching constraints.',
-    icon: FileText,
-    subSteps: [
-      'Search skills database and align industry taxonomies',
-      'Invoke generative LLM chain to draft JD content',
-      'Parse draft into standard sections (responsibilities, requirements)'
-    ]
-  },
-  {
-    id: 'human_approval',
-    title: 'JD Review & Approval',
-    agentName: 'Human Recruiter',
-    description: 'Awaiting review and approval from recruiter before role publication.',
-    icon: UserCheck,
-    subSteps: [
-      'Notify hiring manager of pending JD draft',
-      'Capture edits, corrections, or feedback inputs',
-      'Unlock sourcing process upon approval verification'
-    ]
-  },
-  {
-    id: 'sourcing',
-    title: 'Candidate Sourcing & Job Posting',
-    agentName: 'Sourcing Agent',
-    description: 'Publishes approved roles to major boards like LinkedIn, Indeed, and Naukri.',
-    icon: Send,
-    subSteps: [
-      'Generate board-specific metadata structures',
-      'Submit listings to external job board APIs',
-      'Listen for candidate applications and save initial profile records'
-    ]
-  },
-  {
-    id: 'monitoring',
-    title: 'Application Volume Monitoring',
-    agentName: 'Monitoring Agent',
-    description: 'Monitors incoming traffic and runs optimization loops if application counts are low.',
-    icon: Eye,
-    subSteps: [
-      'Track applicant counts against target candidate volume (threshold: 10)',
-      'Analyze application velocity trends',
-      'Trigger JD optimization loop if traffic falls below target threshold'
-    ]
-  },
-  {
-    id: 'screening',
-    title: 'Resume Parsing & Screening',
-    agentName: 'Resume Screening Agent',
-    description: 'Evaluates candidate resumes using AI matching algorithms.',
-    icon: Search,
-    subSteps: [
-      'Parse incoming resume PDFs into plain text data',
-      'Calculate match scores and classify fit categories',
-      'Generate key skills comparison and screening justification'
-    ]
-  },
-  {
-    id: 'human_review',
-    title: 'Shortlist Validation',
-    agentName: 'Human Recruiter',
-    description: 'Recruiter verifies matching scores and approves the candidate shortlist.',
-    icon: Users,
-    subSteps: [
-      'Present AI shortlists and evaluation reasoning',
-      'Allow recruiter to override candidate classifications',
-      'Trigger calendar scheduling for approved candidates'
-    ]
-  },
-  {
-    id: 'interviewing',
-    title: 'Interview Coordination & Simulation',
-    agentName: 'Interview Agent',
-    description: 'Schedules and runs technical/HR evaluation simulations.',
-    icon: Video,
-    subSteps: [
-      'Generate meeting schedules and coordinate calendar invites',
-      'Simulate technical and behavioral interactive evaluation chats',
-      'Compile interview feedback summaries and composite score sheets'
-    ]
-  },
-  {
-    id: 'onboarding',
-    title: 'Offer Generation & Onboarding',
-    agentName: 'Onboarding Agent',
-    description: 'Prepares welcome package, offer letters, and corporate accounts.',
-    icon: UserPlus,
-    subSteps: [
-      'Compose customized formal offer letters',
-      'Set up enterprise communication accounts (email, Slack)',
-      'Disseminate IT tasks and onboarding checklists to new hire'
-    ]
+/* ─── Node / Graph Topology ──────────────────────────────── */
+const NODES: NodeDef[] = [
+  { id: 'supervisor', title: 'Workflow Initiation & Orchestration', shortTitle: 'Supervisor', agentName: 'Supervisor Agent', agentType: 'ai', description: 'Orchestrates the recruitment flow and delegates tasks based on hiring goals.', icon: Brain, col: 2, row: 0, connects: ['planning'], subSteps: ['Parse hiring goal and parameters', 'Initialize workflow session', 'Delegate to Planning Agent'] },
+  { id: 'planning', title: 'Recruitment Planning', shortTitle: 'Planning', agentName: 'Planning Agent', agentType: 'ai', description: 'Converts recruiting goals into structured pipeline milestones.', icon: ClipboardList, col: 2, row: 1, connects: ['jd_generation'], subSteps: ['Analyze job requirements & timeline', 'Formulate stage sequence & targets', 'Save plan to short-term memory'] },
+  { id: 'jd_generation', title: 'Job Description Drafting', shortTitle: 'JD Drafting', agentName: 'JD Agent', agentType: 'ai', description: 'Generates professional, AI-optimized Job Descriptions.', icon: FileText, col: 2, row: 2, connects: ['human_approval'], subSteps: ['Search skills database', 'Invoke generative LLM chain', 'Parse draft into standard sections'] },
+  { id: 'human_approval', title: 'JD Review & Approval', shortTitle: 'JD Approval', agentName: 'Human Recruiter', agentType: 'human', description: 'Awaiting review and approval from recruiter before role publication.', icon: UserCheck, col: 2, row: 3, connects: ['sourcing'], subSteps: ['Notify hiring manager of JD draft', 'Capture edits / feedback', 'Unlock sourcing upon approval'] },
+  { id: 'sourcing', title: 'Candidate Sourcing & Job Posting', shortTitle: 'Sourcing', agentName: 'Sourcing Agent', agentType: 'ai', description: 'Publishes approved roles to LinkedIn, Indeed, Naukri, and more.', icon: Send, col: 1, row: 4, connects: ['monitoring'], subSteps: ['Generate board-specific metadata', 'Submit listings to job board APIs', 'Save initial candidate profile records'] },
+  { id: 'monitoring', title: 'Application Volume Monitoring', shortTitle: 'Monitoring', agentName: 'Monitoring Agent', agentType: 'ai', description: 'Monitors incoming traffic and triggers optimization loops if needed.', icon: Eye, col: 1, row: 5, connects: ['screening'], subSteps: ['Track applicant counts vs. target', 'Analyze application velocity trends', 'Trigger JD optimization if needed'] },
+  { id: 'screening', title: 'Resume Parsing & Screening', shortTitle: 'Screening', agentName: 'Resume Screening Agent', agentType: 'ai', description: 'Evaluates candidate resumes using AI matching algorithms.', icon: Search, col: 2, row: 5, connects: ['human_review'], subSteps: ['Parse incoming resume PDFs', 'Calculate match scores', 'Generate screening justification'] },
+  { id: 'human_review', title: 'Shortlist Validation', shortTitle: 'Shortlist Review', agentName: 'Human Recruiter', agentType: 'human', description: 'Recruiter verifies AI scoring and approves shortlisted candidates.', icon: Users, col: 3, row: 5, connects: ['interviewing'], subSteps: ['Present AI shortlists & reasoning', 'Allow recruiter overrides', 'Trigger calendar scheduling'] },
+  { id: 'interviewing', title: 'Interview Coordination & Simulation', shortTitle: 'Interviews', agentName: 'Interview Agent', agentType: 'ai', description: 'Schedules and runs technical/HR evaluation simulations.', icon: Video, col: 2, row: 6, connects: ['onboarding'], subSteps: ['Generate meeting schedules', 'Run evaluation simulations', 'Compile feedback & scores'] },
+  { id: 'onboarding', title: 'Offer Generation & Onboarding', shortTitle: 'Onboarding', agentName: 'Onboarding Agent', agentType: 'ai', description: 'Prepares welcome package, offer letters, and corporate accounts.', icon: UserPlus, col: 2, row: 7, connects: [], subSteps: ['Compose custom offer letters', 'Setup enterprise accounts', 'Disseminate IT onboarding tasks'] },
+]
+
+const STAGE_ORDER = ['supervisor','planning','jd_generation','human_approval','sourcing','monitoring','screening','human_review','interviewing','onboarding']
+
+/* ─── Status maps ────────────────────────────────────────── */
+const jobStatusColor: Record<JobStatus, string> = {
+  draft: '#64748b', generating_jd: '#6366f1', pending_approval: '#f59e0b',
+  approved: '#10b981', published: '#3b82f6', monitoring: '#8b5cf6',
+  screening: '#ec4899', interviewing: '#14b8a6', onboarding: '#a855f7', closed: '#ef4444',
+}
+const jobStatusLabel: Record<JobStatus, string> = {
+  draft: 'Draft', generating_jd: 'JD Generation', pending_approval: 'Pending Approval',
+  approved: 'Approved', published: 'Published', monitoring: 'Monitoring',
+  screening: 'Screening', interviewing: 'Interviewing', onboarding: 'Onboarding', closed: 'Closed',
+}
+
+/* ─── Layout constants ───────────────────────────────────── */
+const NW = 186
+const NH = 76
+const COL_GAP = 230
+const ROW_GAP = 116
+const PAD_X = 60
+const PAD_Y = 48
+
+const colX = (c: number) => PAD_X + c * COL_GAP
+const rowY = (r: number) => PAD_Y + r * ROW_GAP
+const CANVAS_W = 5 * COL_GAP + PAD_X * 2
+const MAX_ROW = Math.max(...NODES.map(n => n.row))
+const CANVAS_H = rowY(MAX_ROW) + NH + PAD_Y * 2
+
+function edgePath(from: NodeDef, to: NodeDef): string {
+  const x1 = colX(from.col) + NW / 2
+  const y1 = rowY(from.row) + NH
+  const x2 = colX(to.col) + NW / 2
+  const y2 = rowY(to.row)
+  const cy = (y1 + y2) / 2
+  return `M ${x1} ${y1} C ${x1} ${cy}, ${x2} ${cy}, ${x2} ${y2}`
+}
+
+function stateColors(state: StageState) {
+  switch (state) {
+    case 'completed':        return { stroke: '#10b981', bg: 'rgba(16,185,129,0.1)',  border: '#10b981', text: '#10b981', badge: 'Completed',        filterId: 'glow-green'  }
+    case 'running':          return { stroke: '#6366f1', bg: 'rgba(99,102,241,0.12)', border: '#6366f1', text: '#a5b4fc', badge: 'Running',           filterId: 'glow-indigo' }
+    case 'waiting_approval': return { stroke: '#f59e0b', bg: 'rgba(245,158,11,0.1)', border: '#f59e0b', text: '#f59e0b', badge: 'Awaiting Approval',  filterId: 'glow-amber'  }
+    case 'failed':           return { stroke: '#ef4444', bg: 'rgba(239,68,68,0.1)',  border: '#ef4444', text: '#ef4444', badge: 'Failed',             filterId: 'glow-red'    }
+    default:                 return { stroke: 'rgba(255,255,255,0.09)', bg: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.09)', text: '#4b5563', badge: 'Pending', filterId: '' }
   }
-]
+}
 
-const STAGE_ORDER = [
-  'supervisor',
-  'planning',
-  'jd_generation',
-  'human_approval',
-  'sourcing',
-  'monitoring',
-  'screening',
-  'human_review',
-  'interviewing',
-  'onboarding'
-]
-
+/* ─── Component ──────────────────────────────────────────── */
 export default function WorkflowMonitor() {
   const [selectedJobId, setSelectedJobId] = useState('')
-  const [expandedStages, setExpandedStages] = useState<Record<string, boolean>>({})
+  const [selectedNode, setSelectedNode] = useState<NodeDef | null>(null)
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [dashOffset, setDashOffset] = useState(0)
   const qc = useQueryClient()
 
-  const { data: jobs } = useQuery({
-    queryKey: ['jobs'],
-    queryFn: () => jobsApi.list({ page_size: 50 }),
-  })
+  const { data: jobs } = useQuery({ queryKey: ['jobs'], queryFn: () => jobsApi.list({ page_size: 50 }) })
 
-  // Auto-select first job
   useEffect(() => {
-    if (jobs?.items && jobs.items.length > 0 && !selectedJobId) {
-      setSelectedJobId(jobs.items[0].id)
-    }
+    if (jobs?.items?.length && !selectedJobId) setSelectedJobId(jobs.items[0].id)
   }, [jobs, selectedJobId])
 
   const { data: workflowState } = useQuery({
     queryKey: ['workflow-status', selectedJobId],
     queryFn: () => workflowApi.status(selectedJobId),
-    enabled: !!selectedJobId,
-    refetchInterval: 5000, // Poll every 5s when a job is selected
+    enabled: !!selectedJobId, refetchInterval: 5000,
   })
 
   const { data: logs } = useQuery<AgentLog[]>({
     queryKey: ['workflow-logs', selectedJobId],
     queryFn: () => workflowApi.logs(selectedJobId),
-    enabled: !!selectedJobId,
-    refetchInterval: 5000,
+    enabled: !!selectedJobId, refetchInterval: 5000,
   })
 
-  const retryInterviewMutation = useMutation({
+  const retryMutation = useMutation({
     mutationFn: () => workflowApi.retryInterview(selectedJobId),
     onSuccess: () => {
       toast.success('Interview simulation re-triggered!')
       qc.invalidateQueries({ queryKey: ['workflow-status', selectedJobId] })
       qc.invalidateQueries({ queryKey: ['workflow-logs', selectedJobId] })
     },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.detail || 'Failed to retry interview'
-      toast.error(msg)
-    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to retry'),
   })
 
-  // Auto-expand current active stage when it updates
+  // Animate dashes
   useEffect(() => {
-    if (workflowState?.current_stage) {
-      setExpandedStages(prev => ({
-        ...prev,
-        [workflowState.current_stage]: true
-      }))
-    }
-  }, [workflowState?.current_stage])
-
-  const toggleStage = (stageId: string) => {
-    setExpandedStages(prev => ({
-      ...prev,
-      [stageId]: !prev[stageId]
-    }))
-  }
-
-  const handleExpandAll = () => {
-    const allExpanded = STAGES.reduce((acc, stage) => {
-      acc[stage.id] = true
-      return acc
-    }, {} as Record<string, boolean>)
-    setExpandedStages(allExpanded)
-  }
-
-  const handleCollapseAll = () => {
-    setExpandedStages({})
-  }
-
-  const isStuckAtInterview = workflowState?.current_stage === 'interviewing' &&
-    workflowState?.agent_statuses?.['interview'] === 'running'
+    const id = setInterval(() => setDashOffset(v => (v - 1) % 24), 50)
+    return () => clearInterval(id)
+  }, [])
 
   const currentJob = jobs?.items?.find(j => j.id === selectedJobId)
 
-  // Status mapping for a stage based on backend state
-  const getStageStatus = (stageId: string): 'idle' | 'running' | 'completed' | 'failed' | 'waiting_approval' => {
+  const getStatus = (id: string): StageState => {
     if (!workflowState) return 'idle'
-
-    const isFailed = workflowState.current_stage === 'failed'
-    
-    // If workflow is failed and this stage was the active one when it failed
-    if (isFailed && workflowState.current_stage === stageId) {
-      return 'failed'
+    const keyMap: Record<string, string> = {
+      supervisor: 'supervisor', planning: 'planning', jd_generation: 'jd_generation',
+      human_approval: 'human_approval', sourcing: 'sourcing', monitoring: 'monitoring',
+      screening: 'screening', human_review: 'human_review', interviewing: 'interview', onboarding: 'onboarding',
     }
-
-    const agentKeyMap: Record<string, string> = {
-      supervisor: 'supervisor',
-      planning: 'planning',
-      jd_generation: 'jd_generation',
-      human_approval: 'human_approval',
-      sourcing: 'sourcing',
-      monitoring: 'monitoring',
-      screening: 'screening',
-      human_review: 'human_review',
-      interviewing: 'interview',
-      onboarding: 'onboarding',
-    }
-
-    const key = agentKeyMap[stageId]
-    if (!key) return 'idle'
-
-    return (workflowState.agent_statuses?.[key] || 'idle') as any
+    const raw = workflowState.agent_statuses?.[keyMap[id]] || 'idle'
+    if (raw === 'threshold_reached' || raw === 'below_threshold') return 'completed'
+    return raw as StageState
   }
 
-  // Composite state evaluation for display
-  const getStageState = (stageId: string): 'completed' | 'running' | 'waiting_approval' | 'failed' | 'idle' => {
+  const getState = (id: string): StageState => {
     if (!workflowState) return 'idle'
-
-    const currentStage = workflowState.current_stage
-    const isFinished = currentStage === 'completed'
-    const isFailed = currentStage === 'failed'
-
-    const status = getStageStatus(stageId)
-    if (status === 'completed' || status === 'threshold_reached' as any || status === 'below_threshold' as any) {
-      return 'completed'
+    const cs = workflowState.current_stage
+    const s = getStatus(id)
+    if (['completed','failed','waiting_approval','running'].includes(s)) return s
+    if (cs === 'completed') return 'completed'
+    const ci = STAGE_ORDER.indexOf(cs), si = STAGE_ORDER.indexOf(id)
+    if (ci !== -1 && si !== -1) {
+      if (si < ci) return 'completed'
+      if (si === ci) return 'running'
     }
-    if (status === 'failed') return 'failed'
-    if (status === 'waiting_approval') return 'waiting_approval'
-    if (status === 'running') return 'running'
-
-    if (isFinished) return 'completed'
-    if (isFailed && stageId === workflowState.current_stage) return 'failed'
-
-    // Fallback checks using linear progression indices
-    const currentIdx = STAGE_ORDER.indexOf(currentStage)
-    const stageIdx = STAGE_ORDER.indexOf(stageId)
-
-    if (currentIdx !== -1 && stageIdx !== -1) {
-      if (stageIdx < currentIdx) return 'completed'
-      if (stageIdx === currentIdx) return 'running'
-    }
-
     return 'idle'
   }
 
-  const getLineBg = (stageId: string) => {
-    const state = getStageState(stageId)
-    if (state === 'completed') return '#10b981'
-    return 'rgba(255, 255, 255, 0.08)'
+  const getLogs = (id: string): AgentLog[] => {
+    if (!logs) return []
+    const nameMap: Record<string, string> = {
+      supervisor: 'Supervisor Agent', planning: 'Planning Agent', jd_generation: 'JD Agent',
+      sourcing: 'Sourcing Agent', monitoring: 'Monitoring Agent', screening: 'Resume Screening Agent',
+      interviewing: 'Interview Agent', onboarding: 'Onboarding Agent',
+    }
+    if (id === 'human_approval') return []
+    if (id === 'human_review') return logs.filter(l => l.agent_name === 'Supervisor Agent' && l.action === 'human_review_completed')
+    return logs.filter(l => l.agent_name === nameMap[id])
   }
 
-  const getSubStepState = (stageState: 'completed' | 'running' | 'waiting_approval' | 'failed' | 'idle', stepIdx: number) => {
-    if (stageState === 'completed') return 'completed'
-    if (stageState === 'idle') return 'pending'
-    if (stageState === 'failed') return 'failed'
-    if (stageState === 'running') {
-      if (stepIdx === 0) return 'completed'
-      if (stepIdx === 1) return 'active'
-      return 'pending'
-    }
-    if (stageState === 'waiting_approval') {
-      if (stepIdx === 0) return 'completed'
-      return 'active'
-    }
+  const getSubStep = (state: StageState, idx: number) => {
+    if (state === 'completed') return 'done'
+    if (state === 'idle') return 'pending'
+    if (state === 'failed') return idx === 0 ? 'done' : idx === 1 ? 'failed' : 'pending'
+    if (state === 'running') return idx === 0 ? 'done' : idx === 1 ? 'active' : 'pending'
+    if (state === 'waiting_approval') return idx === 0 ? 'done' : 'active'
     return 'pending'
   }
 
-  const getStageLogs = (stageId: string): AgentLog[] => {
-    if (!logs) return []
-    return logs.filter(log => {
-      switch (stageId) {
-        case 'supervisor':
-          return log.agent_name === 'Supervisor Agent' && 
-            (log.action === 'workflow_initiated' || log.action === 'workflow_completed')
-        case 'planning':
-          return log.agent_name === 'Planning Agent'
-        case 'jd_generation':
-          return log.agent_name === 'JD Agent' && 
-            (log.action === 'generate_job_description' || log.action === 'regenerate_job_description')
-        case 'human_approval':
-          return false // Recruiter touchpoint
-        case 'sourcing':
-          return log.agent_name === 'Sourcing Agent'
-        case 'monitoring':
-          return log.agent_name === 'Monitoring Agent'
-        case 'screening':
-          return log.agent_name === 'Resume Screening Agent'
-        case 'human_review':
-          return log.agent_name === 'Supervisor Agent' && log.action === 'human_review_completed'
-        case 'interviewing':
-          return log.agent_name === 'Interview Agent'
-        case 'onboarding':
-          return log.agent_name === 'Onboarding Agent'
-        default:
-          return false
-      }
-    })
-  }
+  const completedCount = NODES.filter(n => getState(n.id) === 'completed').length
+  const progress = NODES.length ? Math.round((completedCount / NODES.length) * 100) : 0
+  const isStuckInterview = workflowState?.current_stage === 'interviewing' && workflowState?.agent_statuses?.['interview'] === 'running'
 
   return (
-    <div style={{ padding: '24px', width: '100%', maxWidth: '1800px', margin: '0 auto', height: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexShrink: 0 }}>
-        <div>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <GitBranch size={22} color="#6366f1" /> Workflow Monitor
-          </h1>
-          <p style={{ fontSize: '14px', color: '#64748b' }}>Real-time agent execution status and detailed stage-by-stage pipelines</p>
+    <div style={{ display: 'flex', height: 'calc(100vh - 60px)', overflow: 'hidden', background: '#06060f', fontFamily: 'Inter, sans-serif' }}>
+
+      {/* ── LEFT SIDEBAR ───────────────────────────────── */}
+      <div style={{ width: 272, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', background: 'rgba(255,255,255,0.01)' }}>
+        <div style={{ padding: '18px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+            <GitBranch size={17} color="#6366f1" />
+            <span style={{ fontWeight: 700, fontSize: 15, color: '#e2e8f0' }}>Workflow Monitor</span>
+          </div>
+          <p style={{ fontSize: 11.5, color: '#475569' }}>Real-time agent graph execution</p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          {workflowState && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: 'rgba(16,185,129,0.1)', padding: '6px 12px', borderRadius: '20px', border: '1px solid rgba(16,185,129,0.2)' }}>
-              <span className="pulse-dot" style={{ background: '#10b981', width: '8px', height: '8px', borderRadius: '50%' }} />
-              <span style={{ fontSize: '12px', color: '#10b981', fontWeight: 500 }}>Live updates active</span>
+
+        {workflowState && (
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.08)', padding: '4px 10px', borderRadius: 20, border: '1px solid rgba(16,185,129,0.2)' }}>
+              <span className="pulse-dot" style={{ background: '#10b981', width: 6, height: 6 }} />
+              <span style={{ fontSize: 11, color: '#10b981', fontWeight: 500 }}>Live · updates every 5s</span>
             </div>
-          )}
+          </div>
+        )}
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px' }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.8px', padding: '0 6px', marginBottom: 8 }}>
+            Active Roles · {jobs?.items?.length || 0}
+          </div>
+          {!jobs?.items?.length ? (
+            <div style={{ textAlign: 'center', padding: '36px 10px', color: '#374151' }}>
+              <Briefcase size={26} style={{ display: 'block', margin: '0 auto 8px', color: '#1f2937' }} />
+              <span style={{ fontSize: 12 }}>No jobs found</span>
+            </div>
+          ) : jobs.items.map(j => {
+            const isSel = j.id === selectedJobId
+            const sc = jobStatusColor[j.status] || '#64748b'
+            return (
+              <div key={j.id} onClick={() => { setSelectedJobId(j.id); setSelectedNode(null) }}
+                style={{ padding: '11px 13px', borderRadius: 10, marginBottom: 6, cursor: 'pointer', transition: 'all 0.15s ease', background: isSel ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.02)', border: `1px solid ${isSel ? '#6366f1' : 'rgba(255,255,255,0.06)'}` }}
+                onMouseEnter={e => { if (!isSel) { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}}
+                onMouseLeave={e => { if (!isSel) { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}}
+              >
+                <div style={{ fontWeight: 600, fontSize: 13, color: isSel ? '#a5b4fc' : '#cbd5e1', marginBottom: 3 }}>{j.title}</div>
+                <div style={{ fontSize: 11, color: '#475569', marginBottom: 6 }}>{j.department} · {j.location}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: sc, boxShadow: `0 0 4px ${sc}` }} />
+                  <span style={{ fontSize: 11, color: '#64748b' }}>{jobStatusLabel[j.status] || j.status}</span>
+                </div>
+              </div>
+            )
+          })}
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '24px', flex: 1, minHeight: 0, height: '100%', width: '100%' }}>
-        {/* Left Column: Interactive Jobs List */}
-        <div style={{
-          background: 'rgba(255,255,255,0.02)',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: '14px',
-          padding: '16px',
-          overflowY: 'auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '12px',
-          height: '100%',
-          width: '320px',
-          flexShrink: 0,
-        }}>
-          <h2 style={{ fontSize: '14px', fontWeight: 600, color: '#94a3b8', padding: '0 8px 8px 8px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>Active Roles</span>
-            <span style={{ fontSize: '11px', background: 'rgba(255,255,255,0.08)', padding: '2px 8px', borderRadius: '10px', color: '#64748b' }}>{jobs?.items.length || 0} total</span>
-          </h2>
+      {/* ── MAIN GRAPH AREA ────────────────────────────── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
-          {!jobs?.items.length ? (
-            <div style={{ textAlign: 'center', padding: '40px 10px', color: '#64748b', fontSize: '13px' }}>
-              <Briefcase size={32} style={{ marginBottom: '10px', color: '#374151', display: 'block', margin: '0 auto 10px' }} />
-              No jobs found.
-            </div>
-          ) : (
-            jobs.items.map(j => {
-              const isSelected = j.id === selectedJobId
-              const statusColor = jobStatusColor[j.status] || '#64748b'
-              return (
-                <div
-                  key={j.id}
-                  onClick={() => setSelectedJobId(j.id)}
-                  style={{
-                    padding: '14px 16px',
-                    borderRadius: '12px',
-                    background: isSelected ? 'rgba(99, 102, 241, 0.12)' : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${isSelected ? '#6366f1' : 'rgba(255,255,255,0.06)'}`,
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease',
-                  }}
-                  onMouseEnter={e => {
-                    if (!isSelected) {
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    if (!isSelected) {
-                      e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'
-                      e.currentTarget.style.background = 'rgba(255,255,255,0.03)'
-                    }
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: '14px', color: isSelected ? '#a5b4fc' : '#e2e8f0', marginBottom: '4px' }}>
-                    {j.title}
-                  </div>
-                  <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
-                    {j.department} · {j.location}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span style={{
-                      width: '8px', height: '8px', borderRadius: '50%',
-                      background: statusColor,
-                      boxShadow: `0 0 6px ${statusColor}`,
-                    }} />
-                    <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500 }}>
-                      {jobStatusLabel[j.status] || j.status}
-                    </span>
-                  </div>
+        {!selectedJobId ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#1f2937' }}>
+            <Activity size={48} style={{ marginBottom: 14 }} />
+            <p style={{ fontSize: 15, color: '#475569' }}>Select a job to view its workflow graph</p>
+          </div>
+        ) : (
+          <>
+            {/* Top bar */}
+            <div style={{ padding: '13px 22px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.01)', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontSize: 10, color: '#374151', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '1px' }}>
+                  Graph Workflow · {currentJob?.title}
                 </div>
-              )
-            })
-          )}
-        </div>
-
-        {/* Right Column: Redesigned Workflow Stage Monitor */}
-        <div style={{
-          background: '#0a0a14',
-          border: '1px solid rgba(255,255,255,0.06)',
-          borderRadius: '14px',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          height: '100%',
-          flex: 1,
-          minWidth: 0,
-        }}>
-          {!selectedJobId ? (
-            <div style={{
-              flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', padding: '40px',
-            }}>
-              <Activity size={48} style={{ marginBottom: '16px', color: '#374151' }} />
-              <p style={{ color: '#64748b', fontSize: '15px' }}>Select a job from the list to monitor its workflow</p>
-            </div>
-          ) : (
-            <>
-              {/* Header banner */}
-              <div style={{
-                background: '#0e0e1c',
-                borderBottom: '1px solid rgba(255,255,255,0.06)',
-                padding: '16px 24px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                flexShrink: 0,
-                zIndex: 10,
-                position: 'relative',
-              }}>
-                <div>
-                  <div style={{ fontSize: '10px', color: '#64748b', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '1px' }}>
-                    Active Workflow Pipeline
+                {currentJob?.hiring_goal && (
+                  <div style={{ fontSize: 11.5, color: '#475569', marginTop: 2 }}>
+                    Goal: <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>"{currentJob.hiring_goal}"</span>
                   </div>
-                  {currentJob && (
-                    <div style={{ fontSize: '18px', fontWeight: 700, color: '#ffffff', marginTop: '4px' }}>
-                      {currentJob.title} <span style={{ fontSize: '14px', color: '#64748b', fontWeight: 400 }}>({currentJob.department})</span>
-                    </div>
-                  )}
-                  {currentJob && (
-                    <div style={{ fontSize: '12px', color: '#94a3b8', marginTop: '2px' }}>
-                      Goal: <span style={{ color: '#cbd5e1', fontStyle: 'italic' }}>"{currentJob.hiring_goal}"</span>
-                    </div>
-                  )}
-                </div>
-                
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                  <button
-                    onClick={handleExpandAll}
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: '6px',
-                      color: '#94a3b8',
-                      fontSize: '11px',
-                      padding: '4px 10px',
-                      cursor: 'pointer',
-                      fontWeight: 500,
-                    }}
-                  >
-                    Expand All
-                  </button>
-                  <button
-                    onClick={handleCollapseAll}
-                    style={{
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      borderRadius: '6px',
-                      color: '#94a3b8',
-                      fontSize: '11px',
-                      padding: '4px 10px',
-                      cursor: 'pointer',
-                      fontWeight: 500,
-                    }}
-                  >
-                    Collapse All
-                  </button>
-                  
-                  {workflowState && (
-                    <div style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '6px 12px',
-                      background: workflowState.current_stage === 'completed' 
-                        ? 'rgba(16,185,129,0.1)' 
-                        : workflowState.current_stage === 'failed'
-                        ? 'rgba(239,68,68,0.1)'
-                        : 'rgba(99,102,241,0.1)',
-                      borderRadius: '20px',
-                      border: `1px solid ${
-                        workflowState.current_stage === 'completed'
-                          ? 'rgba(16,185,129,0.2)'
-                          : workflowState.current_stage === 'failed'
-                          ? 'rgba(239,68,68,0.2)'
-                          : 'rgba(99,102,241,0.2)'
-                      }`
-                    }}>
-                      <span className="pulse-dot" style={{
-                        background: workflowState.current_stage === 'completed' 
-                          ? '#10b981' 
-                          : workflowState.current_stage === 'failed'
-                          ? '#ef4444'
-                          : '#6366f1',
-                        width: '8px',
-                        height: '8px',
-                        borderRadius: '50%'
-                      }} />
-                      <span style={{
-                        fontSize: '11px',
-                        color: workflowState.current_stage === 'completed' 
-                          ? '#10b981' 
-                          : workflowState.current_stage === 'failed'
-                          ? '#ef4444'
-                          : '#818cf8',
-                        fontWeight: 600,
-                        textTransform: 'uppercase'
-                      }}>
-                        {workflowState.current_stage === 'completed' 
-                          ? 'Completed' 
-                          : workflowState.current_stage === 'failed'
-                          ? 'Failed'
-                          : `Active: ${workflowState.current_stage.replace(/_/g, ' ')}`}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
 
-              {/* Scrollable list of workflow stages */}
-              <div style={{ flex: 1, overflowY: 'auto', padding: '24px 32px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
-                  {STAGES.map((stage, index) => {
-                    const stageState = getStageState(stage.id)
-                    const isCurrent = workflowState?.current_stage === stage.id
-                    const isExpanded = !!expandedStages[stage.id]
-                    const IconComponent = stage.icon
-                    
-                    // State configurations for styles
-                    const config = {
-                      completed: {
-                        circleBg: 'rgba(16, 185, 129, 0.12)',
-                        circleBorder: '#10b981',
-                        circleColor: '#10b981',
-                        badgeClass: 'badge-success',
-                        badgeText: 'Completed'
-                      },
-                      running: {
-                        circleBg: 'rgba(99, 102, 241, 0.15)',
-                        circleBorder: '#6366f1',
-                        circleColor: '#ffffff',
-                        badgeClass: 'badge-info',
-                        badgeText: 'Running'
-                      },
-                      waiting_approval: {
-                        circleBg: 'rgba(245, 158, 11, 0.15)',
-                        circleBorder: '#f59e0b',
-                        circleColor: '#f59e0b',
-                        badgeClass: 'badge-warning',
-                        badgeText: 'Awaiting Recruiter'
-                      },
-                      failed: {
-                        circleBg: 'rgba(239, 68, 68, 0.15)',
-                        circleBorder: '#ef4444',
-                        circleColor: '#ef4444',
-                        badgeClass: 'badge-danger',
-                        badgeText: 'Failed'
-                      },
-                      idle: {
-                        circleBg: 'rgba(255, 255, 255, 0.02)',
-                        circleBorder: 'rgba(255, 255, 255, 0.08)',
-                        circleColor: '#64748b',
-                        badgeClass: 'badge-neutral',
-                        badgeText: 'Pending'
-                      }
-                    }[stageState] || {
-                      circleBg: 'rgba(255, 255, 255, 0.02)',
-                      circleBorder: 'rgba(255, 255, 255, 0.08)',
-                      circleColor: '#64748b',
-                      badgeClass: 'badge-neutral',
-                      badgeText: 'Pending'
-                    }
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                {/* Progress */}
+                <div>
+                  <div style={{ fontSize: 10.5, color: '#374151', marginBottom: 4, textAlign: 'right' }}>Pipeline Progress</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ width: 140, height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg,#6366f1,#10b981)', borderRadius: 2, transition: 'width 0.5s ease' }} />
+                    </div>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{progress}<span style={{ fontSize: 10, color: '#374151' }}>%</span></span>
+                  </div>
+                </div>
 
-                    const stageLogs = getStageLogs(stage.id)
+                {workflowState && (() => {
+                  const cs = workflowState.current_stage
+                  const clr = cs === 'completed' ? '#10b981' : cs === 'failed' ? '#ef4444' : '#6366f1'
+                  const label = cs === 'completed' ? 'Completed' : cs === 'failed' ? 'Failed' : `Active: ${cs.replace(/_/g, ' ')}`
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: `${clr}18`, borderRadius: 20, border: `1px solid ${clr}40` }}>
+                      <span className="pulse-dot" style={{ background: clr, width: 7, height: 7 }} />
+                      <span style={{ fontSize: 11, fontWeight: 600, color: clr }}>{label}</span>
+                    </div>
+                  )
+                })()}
+              </div>
+            </div>
+
+            {/* Canvas + Detail panel */}
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+
+              {/* SVG canvas with icon overlay */}
+              <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+                <svg viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`} width={CANVAS_W} height={CANVAS_H} style={{ display: 'block', minWidth: CANVAS_W }}>
+                  <defs>
+                    {/* Glow filters */}
+                    {[
+                      { id: 'glow-green',  r: '0.06', g: '0.73', b: '0.51' },
+                      { id: 'glow-indigo', r: '0.39', g: '0.40', b: '0.95' },
+                      { id: 'glow-amber',  r: '0.96', g: '0.62', b: '0.04' },
+                      { id: 'glow-red',    r: '0.94', g: '0.27', b: '0.27' },
+                    ].map(f => (
+                      <filter key={f.id} id={f.id} x="-60%" y="-60%" width="220%" height="220%">
+                        <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
+                        <feColorMatrix in="blur" type="matrix" values={`0 0 0 0 ${f.r}  0 0 0 0 ${f.g}  0 0 0 0 ${f.b}  0 0 0 1 0`} result="c" />
+                        <feMerge><feMergeNode in="c" /><feMergeNode in="SourceGraphic" /></feMerge>
+                      </filter>
+                    ))}
+
+                    {/* Arrow markers */}
+                    {[
+                      { id: 'arr-done',    fill: '#10b981' },
+                      { id: 'arr-run',     fill: '#6366f1' },
+                      { id: 'arr-idle',    fill: 'rgba(255,255,255,0.15)' },
+                    ].map(m => (
+                      <marker key={m.id} id={m.id} markerWidth="8" markerHeight="8" refX="5" refY="3" orient="auto">
+                        <path d="M0,0 L0,6 L8,3 z" fill={m.fill} />
+                      </marker>
+                    ))}
+
+                    {/* Edge gradients */}
+                    <linearGradient id="eg-done" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity="0.9" />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity="0.25" />
+                    </linearGradient>
+                    <linearGradient id="eg-run" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="#6366f1" stopOpacity="0.9" />
+                      <stop offset="100%" stopColor="#6366f1" stopOpacity="0.2" />
+                    </linearGradient>
+                    <linearGradient id="eg-idle" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="rgba(255,255,255,0.1)" />
+                      <stop offset="100%" stopColor="rgba(255,255,255,0.03)" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Dot grid */}
+                  {Array.from({ length: Math.ceil(CANVAS_H / 28) }, (_, ri) =>
+                    Array.from({ length: Math.ceil(CANVAS_W / 28) }, (_, ci) => (
+                      <circle key={`d${ri}-${ci}`} cx={ci * 28 + 14} cy={ri * 28 + 14} r={0.9} fill="rgba(255,255,255,0.035)" />
+                    ))
+                  )}
+
+                  {/* Edges */}
+                  {NODES.flatMap(from =>
+                    from.connects.map(tid => {
+                      const to = NODES.find(n => n.id === tid)
+                      if (!to) return null
+                      const fs = getState(from.id)
+                      const isDone = fs === 'completed'
+                      const isRun = fs === 'running'
+                      return (
+                        <g key={`e-${from.id}-${tid}`}>
+                          {/* Glow track for active edges */}
+                          {(isDone || isRun) && (
+                            <path d={edgePath(from, to)} fill="none" stroke={isDone ? '#10b981' : '#6366f1'} strokeWidth={6} opacity={0.06} />
+                          )}
+                          <path
+                            d={edgePath(from, to)}
+                            fill="none"
+                            stroke={isDone ? 'url(#eg-done)' : isRun ? 'url(#eg-run)' : 'url(#eg-idle)'}
+                            strokeWidth={isDone ? 2 : isRun ? 2 : 1.5}
+                            strokeDasharray={isRun ? '8 5' : 'none'}
+                            strokeDashoffset={isRun ? dashOffset : 0}
+                            markerEnd={isDone ? 'url(#arr-done)' : isRun ? 'url(#arr-run)' : 'url(#arr-idle)'}
+                            filter={isDone ? 'url(#glow-green)' : isRun ? 'url(#glow-indigo)' : ''}
+                          />
+                        </g>
+                      )
+                    })
+                  )}
+
+                  {/* Nodes */}
+                  {NODES.map(node => {
+                    const state = getState(node.id)
+                    const c = stateColors(state)
+                    const isSel = selectedNode?.id === node.id
+                    const isHov = hoveredNodeId === node.id
+                    const isRunning = state === 'running'
+                    const nx = colX(node.col)
+                    const ny = rowY(node.row)
+                    const typeIsHuman = node.agentType === 'human'
+                    const typeColor = typeIsHuman ? '#f59e0b' : '#818cf8'
 
                     return (
-                      <div key={stage.id} style={{ display: 'flex', gap: '20px' }}>
-                        {/* Left stepper connector */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: '40px' }}>
-                          <div style={{
-                            width: '40px', height: '40px', borderRadius: '50%',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            background: config.circleBg, border: `2px solid ${isCurrent ? '#6366f1' : config.circleBorder}`,
-                            color: config.circleColor, zIndex: 2, transition: 'all 0.3s ease',
-                            boxShadow: isCurrent ? '0 0 12px rgba(99, 102, 241, 0.4)' : 'none',
-                            cursor: 'pointer'
-                          }}
-                          onClick={() => toggleStage(stage.id)}
-                          >
-                            <IconComponent size={18} style={{ animation: isCurrent && stageState === 'running' ? 'pulse-dot 1.5s ease-in-out infinite' : 'none' }} />
-                          </div>
-                          {index < STAGES.length - 1 && (
-                            <div style={{
-                              width: '2px',
-                              flexGrow: 1,
-                              background: getLineBg(stage.id),
-                              margin: '6px 0',
-                              minHeight: '40px',
-                              transition: 'all 0.3s ease'
-                            }} />
-                          )}
-                        </div>
+                      <g key={node.id}
+                        transform={`translate(${nx},${ny})`}
+                        onClick={() => setSelectedNode(p => p?.id === node.id ? null : node)}
+                        onMouseEnter={() => setHoveredNodeId(node.id)}
+                        onMouseLeave={() => setHoveredNodeId(null)}
+                        style={{ cursor: 'pointer' }}
+                        filter={state !== 'idle' && (isSel || isHov || isRunning) ? `url(#${c.filterId})` : state !== 'idle' ? `url(#${c.filterId})` : ''}
+                      >
+                        {/* Animated ring for running */}
+                        {isRunning && (
+                          <rect x={-5} y={-5} width={NW + 10} height={NH + 10} rx={17} fill="none"
+                            stroke="#6366f1" strokeWidth={1} strokeDasharray="7 4"
+                            strokeDashoffset={dashOffset * 0.5} opacity={0.4} />
+                        )}
 
-                        {/* Card Container */}
-                        <div style={{
-                          flex: 1,
-                          background: isCurrent 
-                            ? 'rgba(99, 102, 241, 0.04)' 
-                            : 'rgba(255, 255, 255, 0.01)',
-                          border: isCurrent 
-                            ? '1px solid rgba(99, 102, 241, 0.25)' 
-                            : '1px solid rgba(255, 255, 255, 0.05)',
-                          borderRadius: '12px',
-                          padding: isCurrent ? '20px 24px' : '16px 20px',
-                          marginBottom: '24px',
-                          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                          boxShadow: isCurrent ? '0 4px 20px rgba(99, 102, 241, 0.08)' : 'none',
-                        }}>
-                          {/* Card Header */}
-                          <div 
-                            onClick={() => toggleStage(stage.id)}
-                            style={{ 
-                              display: 'flex', 
-                              justifyContent: 'space-between', 
-                              alignItems: 'center', 
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                <span style={{ 
-                                  fontSize: '13px', 
-                                  fontWeight: 500, 
-                                  color: '#64748b' 
-                                }}>
-                                  Step {(index + 1).toString().padStart(2, '0')} ·
-                                </span>
-                                <h3 style={{ 
-                                  fontSize: isCurrent ? '16px' : '15px', 
-                                  fontWeight: 600, 
-                                  color: isCurrent ? '#ffffff' : '#cbd5e1',
-                                  transition: 'color 0.2s ease'
-                                }}>
-                                  {stage.title}
-                                </h3>
-                              </div>
-                              <span style={{ fontSize: '12px', color: '#64748b' }}>
-                                Executing Agent: <span style={{ color: '#818cf8', fontWeight: 500 }}>{stage.agentName}</span>
-                              </span>
-                            </div>
-                            
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                              <span className={`badge ${config.badgeClass}`} style={{ fontSize: '11px', textTransform: 'capitalize' }}>
-                                {config.badgeText}
-                              </span>
-                              {isExpanded ? <ChevronUp size={16} color="#64748b" /> : <ChevronDown size={16} color="#64748b" />}
-                            </div>
-                          </div>
+                        {/* Selection highlight */}
+                        {isSel && (
+                          <rect x={-2} y={-2} width={NW + 4} height={NH + 4} rx={14} fill="none"
+                            stroke={c.border} strokeWidth={2} opacity={0.9} />
+                        )}
 
-                          {/* Expanded Content */}
-                          {isExpanded && (
-                            <div style={{ 
-                              marginTop: '16px', 
-                              borderTop: '1px solid rgba(255, 255, 255, 0.04)', 
-                              paddingTop: '16px',
-                              animation: 'fadeIn 0.2s ease-out'
-                            }}>
-                              <p style={{ fontSize: '13px', color: '#94a3b8', lineHeight: '1.5', marginBottom: '16px' }}>
-                                {stage.description}
-                              </p>
+                        {/* Node body */}
+                        <rect x={0} y={0} width={NW} height={NH} rx={12}
+                          fill={isSel ? c.bg : isHov ? 'rgba(255,255,255,0.05)' : '#0c0c1c'}
+                          stroke={isSel || isHov ? c.border : 'rgba(255,255,255,0.08)'}
+                          strokeWidth={isSel ? 1.5 : 1}
+                        />
 
-                              {/* Checklist steps */}
-                              <div style={{ marginBottom: '20px' }}>
-                                <h4 style={{ fontSize: '12px', fontWeight: 600, color: '#cbd5e1', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px' }}>
-                                  Process Execution Steps
-                                </h4>
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                  {stage.subSteps.map((subStep, subIdx) => {
-                                    const subStepState = getSubStepState(stageState, subIdx)
-                                    
-                                    return (
-                                      <div key={subIdx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                        {subStepState === 'completed' && (
-                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(16, 185, 129, 0.15)' }}>
-                                            <Check size={10} color="#10b981" strokeWidth={3} />
-                                          </div>
-                                        )}
-                                        {subStepState === 'active' && (
-                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px' }}>
-                                            <Loader2 size={12} color="#6366f1" className="animate-spin" />
-                                          </div>
-                                        )}
-                                        {subStepState === 'pending' && (
-                                          <div style={{ width: '16px', height: '16px', borderRadius: '50%', border: '1px solid rgba(255,255,255,0.15)' }} />
-                                        )}
-                                        {subStepState === 'failed' && (
-                                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(239, 68, 68, 0.15)' }}>
-                                            <XCircle size={12} color="#ef4444" />
-                                          </div>
-                                        )}
-                                        <span style={{ 
-                                          fontSize: '12px', 
-                                          color: subStepState === 'completed' 
-                                            ? '#94a3b8' 
-                                            : subStepState === 'active'
-                                            ? '#e2e8f0'
-                                            : '#4b5563',
-                                          fontWeight: subStepState === 'active' ? 500 : 400
-                                        }}>
-                                          {subStep}
-                                        </span>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
+                        {/* Left color accent */}
+                        <rect x={0} y={14} width={3} height={NH - 28} rx={2}
+                          fill={c.stroke} opacity={state === 'idle' ? 0.25 : 1} />
 
-                              {/* Specific log info */}
-                              {stageLogs.length > 0 && (
-                                <div style={{ 
-                                  background: 'rgba(0,0,0,0.2)', 
-                                  border: '1px solid rgba(255, 255, 255, 0.04)',
-                                  borderRadius: '8px', 
-                                  padding: '12px 16px' 
-                                }}>
-                                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.04)', paddingBottom: '8px', marginBottom: '8px' }}>
-                                    <h4 style={{ fontSize: '11px', fontWeight: 600, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                                      Execution Metrics
-                                    </h4>
-                                    <div style={{ display: 'flex', gap: '12px' }}>
-                                      <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                        Latency: <span style={{ color: '#e2e8f0', fontWeight: 500 }}>{stageLogs[0].latency_ms}ms</span>
-                                      </span>
-                                      {stageLogs[0].token_usage > 0 && (
-                                        <span style={{ fontSize: '11px', color: '#64748b' }}>
-                                          Tokens: <span style={{ color: '#e2e8f0', fontWeight: 500 }}>{stageLogs[0].token_usage}</span>
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                                    <div>
-                                      <div style={{ fontSize: '10px', color: '#4b5563', fontWeight: 600, textTransform: 'uppercase' }}>Input Context</div>
-                                      <div style={{ fontSize: '12px', color: '#8892b0', marginTop: '2px' }}>{stageLogs[0].input_summary}</div>
-                                    </div>
-                                    <div>
-                                      <div style={{ fontSize: '10px', color: '#4b5563', fontWeight: 600, textTransform: 'uppercase' }}>Output Process Detail</div>
-                                      <div style={{ fontSize: '12px', color: '#a5b4fc', marginTop: '2px', fontWeight: 400 }}>{stageLogs[0].output_summary}</div>
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
+                        {/* Status dot */}
+                        <circle cx={9} cy={9} r={4} fill={c.stroke} opacity={state === 'idle' ? 0.3 : 1} />
+                        {isRunning && <circle cx={9} cy={9} r={7} fill="none" stroke="#6366f1" strokeWidth={1} opacity={0.4} />}
 
-                              {/* Special helper notes for Recruiter Approval / Review */}
-                              {stage.id === 'human_approval' && currentJob?.status === 'pending_approval' && (
-                                <div style={{ 
-                                  marginTop: '12px', padding: '12px', 
-                                  background: 'rgba(245, 158, 11, 0.08)', 
-                                  border: '1px solid rgba(245, 158, 11, 0.2)', 
-                                  borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' 
-                                }}>
-                                  <AlertTriangle size={14} color="#f59e0b" style={{ flexShrink: 0 }} />
-                                  <span style={{ fontSize: '11px', color: '#f59e0b' }}>
-                                    Recruiter review required. Please visit the **Roles** tab to review, edit, or approve the generated Job Description.
-                                  </span>
-                                </div>
-                              )}
+                        {/* Agent type pill */}
+                        <rect x={NW - 56} y={7} width={49} height={15} rx={7.5}
+                          fill={`${typeColor}18`} stroke={`${typeColor}45`} strokeWidth={0.5} />
+                        <text x={NW - 31.5} y={18} textAnchor="middle" fontSize={7.5} fill={typeColor} fontWeight="700" fontFamily="Inter,sans-serif">
+                          {typeIsHuman ? '👤 HUMAN' : '🤖 AI'}
+                        </text>
 
-                              {stage.id === 'human_review' && getStageStatus('human_review') === 'waiting_approval' && (
-                                <div style={{ 
-                                  marginTop: '12px', padding: '12px', 
-                                  background: 'rgba(245, 158, 11, 0.08)', 
-                                  border: '1px solid rgba(245, 158, 11, 0.2)', 
-                                  borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' 
-                                }}>
-                                  <AlertTriangle size={14} color="#f59e0b" style={{ flexShrink: 0 }} />
-                                  <span style={{ fontSize: '11px', color: '#f59e0b' }}>
-                                    Recruiter shortlist validation required. Please navigate to the **Candidates** page to review scores and shortlist/reject applicants.
-                                  </span>
-                                </div>
-                              )}
+                        {/* Short title */}
+                        <text x={20} y={NH / 2 - 5} fontSize={11.5} fontWeight="700" fill={state === 'idle' ? '#374151' : '#e2e8f0'} fontFamily="Inter,sans-serif">{node.shortTitle}</text>
+                        {/* Agent name */}
+                        <text x={20} y={NH / 2 + 9} fontSize={9.5} fill={state === 'idle' ? '#1f2937' : '#64748b'} fontFamily="Inter,sans-serif">{node.agentName}</text>
+                        {/* Status badge text */}
+                        <text x={20} y={NH / 2 + 22} fontSize={8.5} fill={c.text} fontWeight="600" fontFamily="Inter,sans-serif">● {c.badge}</text>
+                      </g>
+                    )
+                  })}
+                </svg>
 
-                              {/* Stuck at interview action */}
-                              {stage.id === 'interviewing' && isStuckAtInterview && (
-                                <div style={{ 
-                                  marginTop: '12px', padding: '12px', 
-                                  background: 'rgba(239, 68, 68, 0.08)', 
-                                  border: '1px solid rgba(239, 68, 68, 0.2)', 
-                                  borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' 
-                                }}>
-                                  <span style={{ fontSize: '12px', color: '#f87171', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <AlertCircle size={14} style={{ flexShrink: 0 }} /> Interview simulation got stuck or failed.
-                                  </span>
-                                  <button
-                                    onClick={() => retryInterviewMutation.mutate()}
-                                    disabled={retryInterviewMutation.isPending}
-                                    style={{
-                                      display: 'flex', alignItems: 'center', gap: '6px',
-                                      background: '#ef4444', padding: '6px 12px',
-                                      borderRadius: '16px', border: 'none',
-                                      color: '#ffffff', fontSize: '11px', fontWeight: 600,
-                                      cursor: retryInterviewMutation.isPending ? 'not-allowed' : 'pointer',
-                                    }}
-                                  >
-                                    {retryInterviewMutation.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-                                    Retry Simulation
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                {/* Icon overlays (React components can't render inside SVG directly) */}
+                <div style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
+                  {NODES.map(node => {
+                    const state = getState(node.id)
+                    const c = stateColors(state)
+                    const Icon = node.icon
+                    return (
+                      <div key={`ico-${node.id}`} style={{ position: 'absolute', left: colX(node.col) + 2, top: rowY(node.row) + NH / 2 - 8, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {state === 'running'
+                          ? <Loader2 size={13} color={c.stroke} style={{ animation: 'spin 1s linear infinite' }} />
+                          : state === 'completed'
+                          ? <CheckCircle2 size={13} color={c.stroke} />
+                          : state === 'failed'
+                          ? <XCircle size={13} color={c.stroke} />
+                          : state === 'waiting_approval'
+                          ? <AlertCircle size={13} color={c.stroke} />
+                          : <Icon size={13} color={c.stroke} />
+                        }
                       </div>
                     )
                   })}
                 </div>
               </div>
-            </>
-          )}
-        </div>
+
+              {/* ── DETAIL PANEL ───────────────────────── */}
+              {selectedNode && (() => {
+                const nd = selectedNode
+                const state = getState(nd.id)
+                const c = stateColors(state)
+                const nodeLogs = getLogs(nd.id)
+                const typeColor = nd.agentType === 'human' ? '#f59e0b' : '#818cf8'
+                return (
+                  <div style={{ width: 310, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', background: 'rgba(8,8,18,0.98)', overflowY: 'auto', padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 14, animation: 'slideIn 0.18s ease-out' }}>
+                    {/* Header */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <div style={{ flex: 1, marginRight: 8 }}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: `${c.stroke}18`, border: `1px solid ${c.stroke}40`, padding: '3px 9px', borderRadius: 12, marginBottom: 8 }}>
+                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.stroke }} />
+                          <span style={{ fontSize: 9.5, fontWeight: 700, color: c.text, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{c.badge}</span>
+                        </div>
+                        <h3 style={{ fontSize: 13.5, fontWeight: 700, color: '#e2e8f0', lineHeight: 1.3, marginBottom: 4 }}>{nd.title}</h3>
+                        <div style={{ fontSize: 11, color: '#374151' }}>
+                          Agent: <span style={{ color: typeColor, fontWeight: 600 }}>{nd.agentName}</span>
+                        </div>
+                      </div>
+                      <button onClick={() => setSelectedNode(null)} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '4px 5px', cursor: 'pointer', color: '#475569' }}>
+                        <X size={13} />
+                      </button>
+                    </div>
+
+                    {/* Description */}
+                    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8, padding: 12 }}>
+                      <p style={{ fontSize: 12, color: '#64748b', lineHeight: 1.6 }}>{nd.description}</p>
+                    </div>
+
+                    {/* Sub-steps */}
+                    <div>
+                      <div style={{ fontSize: 9.5, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 8 }}>Execution Steps</div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                        {nd.subSteps.map((step, idx) => {
+                          const ss = getSubStep(state, idx)
+                          return (
+                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <div style={{ flexShrink: 0, width: 17, height: 17, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                {ss === 'done'    && <div style={{ width: 17, height: 17, borderRadius: '50%', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CheckCircle2 size={11} color="#10b981" /></div>}
+                                {ss === 'active'  && <Loader2 size={13} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} />}
+                                {ss === 'pending' && <div style={{ width: 17, height: 17, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)' }} />}
+                                {ss === 'failed'  && <div style={{ width: 17, height: 17, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><XCircle size={11} color="#ef4444" /></div>}
+                              </div>
+                              <span style={{ fontSize: 11.5, color: ss === 'done' ? '#64748b' : ss === 'active' ? '#e2e8f0' : ss === 'failed' ? '#f87171' : '#1f2937', fontWeight: ss === 'active' ? 500 : 400 }}>{step}</span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Metrics */}
+                    {nodeLogs.length > 0 && (
+                      <div style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10, padding: 13 }}>
+                        <div style={{ fontSize: 9.5, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <Zap size={10} /> Execution Metrics
+                        </div>
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+                          <div style={{ flex: 1, background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 7, padding: '8px 10px' }}>
+                            <div style={{ fontSize: 8.5, color: '#374151', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Latency</div>
+                            <div style={{ fontSize: 15, fontWeight: 700, color: '#a5b4fc' }}>{nodeLogs[0].latency_ms}<span style={{ fontSize: 9, color: '#374151' }}>ms</span></div>
+                          </div>
+                          {nodeLogs[0].token_usage > 0 && (
+                            <div style={{ flex: 1, background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 7, padding: '8px 10px' }}>
+                              <div style={{ fontSize: 8.5, color: '#374151', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Tokens</div>
+                              <div style={{ fontSize: 15, fontWeight: 700, color: '#6ee7b7' }}>{nodeLogs[0].token_usage}</div>
+                            </div>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 9, color: '#1f2937', fontWeight: 700, textTransform: 'uppercase', marginBottom: 3 }}>Input Context</div>
+                            <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5 }}>{nodeLogs[0].input_summary}</div>
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 9, color: '#1f2937', fontWeight: 700, textTransform: 'uppercase', marginBottom: 3 }}>Output</div>
+                            <div style={{ fontSize: 11, color: '#a5b4fc', lineHeight: 1.5 }}>{nodeLogs[0].output_summary}</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Human action alerts */}
+                    {nd.id === 'human_approval' && currentJob?.status === 'pending_approval' && (
+                      <div style={{ padding: 11, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <AlertTriangle size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.5 }}>Recruiter review required. Visit the <strong>Roles</strong> tab to approve the generated JD.</span>
+                      </div>
+                    )}
+                    {nd.id === 'human_review' && getStatus('human_review') === 'waiting_approval' && (
+                      <div style={{ padding: 11, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+                        <AlertTriangle size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
+                        <span style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.5 }}>Shortlist validation required. Go to <strong>Candidates</strong> to review scores and shortlist applicants.</span>
+                      </div>
+                    )}
+                    {nd.id === 'interviewing' && isStuckInterview && (
+                      <div style={{ padding: 11, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+                          <AlertCircle size={13} color="#f87171" />
+                          <span style={{ fontSize: 11, color: '#f87171' }}>Interview simulation stuck or failed.</span>
+                        </div>
+                        <button onClick={() => retryMutation.mutate()} disabled={retryMutation.isPending}
+                          style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', width: '100%', background: '#ef4444', padding: '7px 0', borderRadius: 16, border: 'none', color: '#fff', fontSize: 11, fontWeight: 700, cursor: retryMutation.isPending ? 'not-allowed' : 'pointer' }}>
+                          {retryMutation.isPending ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={12} />}
+                          Retry Simulation
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Connects to */}
+                    {nd.connects.length > 0 && (
+                      <div>
+                        <div style={{ fontSize: 9.5, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 7 }}>Connects To</div>
+                        {nd.connects.map(cid => {
+                          const cn = NODES.find(n => n.id === cid)
+                          if (!cn) return null
+                          const cc = stateColors(getState(cn.id))
+                          return (
+                            <div key={cid} onClick={() => setSelectedNode(cn)}
+                              style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.06)', borderRadius: 8, cursor: 'pointer', marginBottom: 4 }}>
+                              <span style={{ width: 6, height: 6, borderRadius: '50%', background: cc.stroke, flexShrink: 0 }} />
+                              <span style={{ fontSize: 12, color: '#64748b', flex: 1 }}>{cn.shortTitle}</span>
+                              <ChevronRight size={11} color="#1f2937" />
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )
+              })()}
+            </div>
+
+            {/* Legend */}
+            <div style={{ padding: '9px 22px', borderTop: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.005)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 20, fontSize: 11, color: '#374151', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, color: '#1f2937' }}>Legend</span>
+              {[
+                { color: '#10b981', label: 'Completed' },
+                { color: '#6366f1', label: 'Running' },
+                { color: '#f59e0b', label: 'Awaiting Approval' },
+                { color: '#ef4444', label: 'Failed' },
+                { color: 'rgba(255,255,255,0.1)', label: 'Pending' },
+              ].map(l => (
+                <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: l.color, flexShrink: 0 }} />
+                  <span>{l.label}</span>
+                </div>
+              ))}
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, color: '#1f2937' }}>
+                <Bot size={11} color="#818cf8" /><span>AI Agent</span>
+                <span style={{ color: '#f59e0b' }}>👤</span><span>Human Step</span>
+                <span>·</span>
+                <span style={{ fontSize: 10 }}>Click any node to inspect</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .animate-spin {
-          animation: spin 1s linear infinite;
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(4px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
+        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+        @keyframes slideIn { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
       `}</style>
     </div>
   )
 }
+
