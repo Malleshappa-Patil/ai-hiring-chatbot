@@ -189,9 +189,11 @@ export default function Layout() {
           flex: 1,
           marginLeft: collapsed ? '72px' : '260px',
           transition: 'margin-left 0.25s ease',
-          minHeight: '100vh',
+          height: '100vh',
+          overflow: 'hidden',
           display: 'flex',
           flexDirection: 'column',
+          position: 'relative',
         }}
       >
         <Outlet />

@@ -203,7 +203,7 @@ export default function WorkflowMonitor() {
   const isStuckInterview = workflowState?.current_stage === 'interviewing' && workflowState?.agent_statuses?.['interview'] === 'running'
 
   return (
-    <div style={{ display: 'flex', height: 'calc(100vh - 60px)', overflow: 'hidden', background: '#06060f', fontFamily: 'Inter, sans-serif' }}>
+    <div style={{ flex: 1, height: '100%', display: 'flex', overflow: 'hidden', background: '#06060f', fontFamily: 'Inter, sans-serif' }}>
 
       {/* ── LEFT SIDEBAR ───────────────────────────────── */}
       <div style={{ width: 272, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', background: 'rgba(255,255,255,0.01)' }}>
@@ -304,10 +304,10 @@ export default function WorkflowMonitor() {
             </div>
 
             {/* Canvas + Detail panel */}
-            <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+            <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
-              {/* SVG canvas with icon overlay */}
-              <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
+              {/* SVG canvas with icon overlay — ONLY this area pans/scrolls */}
+              <div style={{ flex: 1, overflow: 'auto', position: 'relative', minWidth: 0 }}>
                 <svg viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`} width={CANVAS_W} height={CANVAS_H} style={{ display: 'block', minWidth: CANVAS_W }}>
                   <defs>
                     {/* Glow filters */}
