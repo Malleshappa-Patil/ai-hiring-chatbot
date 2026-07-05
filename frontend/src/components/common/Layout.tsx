@@ -10,7 +10,6 @@ import {
   LogOut,
   Bot,
   Menu,
-  X,
   ChevronRight,
 } from 'lucide-react'
 import AIChatbot from '@/components/chatbot/AIChatbot'
@@ -53,34 +52,112 @@ export default function Layout() {
           overflow: 'hidden',
         }}
       >
-        {/* Logo */}
-        <div style={{
-          padding: '20px 16px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
-          minHeight: '64px',
-        }}>
+        {/* Logo + Toggle */}
+        {collapsed ? (
+          /* ── Collapsed header: just the toggle button, centered ── */
           <div style={{
-            width: '36px',
-            height: '36px',
-            borderRadius: '10px',
-            background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
+            padding: '16px 12px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            flexShrink: 0,
+            borderBottom: '1px solid rgba(255,255,255,0.07)',
+            minHeight: '64px',
           }}>
-            <Bot size={20} color="white" />
+            <button
+              onClick={() => setCollapsed(false)}
+              title="Expand sidebar"
+              style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '10px',
+                background: 'rgba(99,102,241,0.12)',
+                border: '1px solid rgba(99,102,241,0.2)',
+                color: '#818cf8',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'all 0.2s ease',
+                outline: 'none',
+              }}
+              onMouseEnter={e => {
+                ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.25)'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.45)'
+                ;(e.currentTarget as HTMLButtonElement).style.color = '#a5b4fc'
+              }}
+              onMouseLeave={e => {
+                ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.12)'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.2)'
+                ;(e.currentTarget as HTMLButtonElement).style.color = '#818cf8'
+              }}
+            >
+              <Menu size={16} />
+            </button>
           </div>
-          {!collapsed && (
-            <div>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#e2e8f0', lineHeight: 1.2 }}>AI Hiring</div>
-              <div style={{ fontSize: '11px', color: '#64748b' }}>Platform</div>
+        ) : (
+          /* ── Expanded header: logo + text + collapse button ── */
+          <div style={{
+            padding: '16px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            borderBottom: '1px solid rgba(255,255,255,0.07)',
+            minHeight: '64px',
+            justifyContent: 'space-between',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', overflow: 'hidden', minWidth: 0 }}>
+              <div style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <Bot size={20} color="white" />
+              </div>
+              <div style={{ overflow: 'hidden' }}>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#e2e8f0', lineHeight: 1.2, whiteSpace: 'nowrap' }}>AI Hiring</div>
+                <div style={{ fontSize: '11px', color: '#64748b' }}>Platform</div>
+              </div>
             </div>
-          )}
-        </div>
+
+            <button
+              onClick={() => setCollapsed(true)}
+              title="Collapse sidebar"
+              style={{
+                width: '30px',
+                height: '30px',
+                borderRadius: '8px',
+                background: 'rgba(99,102,241,0.12)',
+                border: '1px solid rgba(99,102,241,0.2)',
+                color: '#818cf8',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+                transition: 'all 0.2s ease',
+                outline: 'none',
+              }}
+              onMouseEnter={e => {
+                ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.25)'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.45)'
+                ;(e.currentTarget as HTMLButtonElement).style.color = '#a5b4fc'
+              }}
+              onMouseLeave={e => {
+                ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.12)'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.2)'
+                ;(e.currentTarget as HTMLButtonElement).style.color = '#818cf8'
+              }}
+            >
+              <ChevronRight size={15} style={{ transform: 'rotate(180deg)' }} />
+            </button>
+          </div>
+        )}
 
         {/* Nav */}
         <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
@@ -149,38 +226,7 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* ── Sidebar Toggle Button — always visible, floats on sidebar edge ── */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        style={{
-          position: 'fixed',
-          top: '20px',
-          left: collapsed ? '84px' : '272px',
-          zIndex: 100,
-          width: '28px',
-          height: '28px',
-          borderRadius: '50%',
-          background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
-          border: '2px solid rgba(255,255,255,0.15)',
-          color: 'white',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          boxShadow: '0 2px 12px rgba(99,102,241,0.5)',
-          transition: 'left 0.25s ease, transform 0.2s ease',
-          outline: 'none',
-        }}
-        onMouseEnter={e => {
-          ;(e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.15)'
-        }}
-        onMouseLeave={e => {
-          ;(e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'
-        }}
-      >
-        {collapsed ? <Menu size={14} /> : <X size={14} />}
-      </button>
+
 
 
       {/* ── Main Content ──────────────────────────────────────── */}
