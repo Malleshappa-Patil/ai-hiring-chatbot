@@ -3,7 +3,7 @@
 > **Production-grade autonomous hiring orchestration platform** — not a chatbot.
 > Takes a high-level goal ("Hire a Senior Backend Engineer") and autonomously runs the complete recruitment lifecycle using LangGraph agents, Google Gemini, RAG, and Human-in-the-Loop workflows.
 
----
+--- 
 
 ## 🏗️ Architecture
 
