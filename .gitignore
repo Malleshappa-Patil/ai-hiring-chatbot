@@ -68,3 +68,6 @@ htmlcov/
 
 agentic-workflow.md
 images/
+
+workflow.tldr
+.backend/config.py
