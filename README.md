@@ -6,7 +6,7 @@
 --- 
 
 ## 🏗️ Architecture
-
+ 
 | Layer | Technology |
 |---|---|
 | AI Orchestration | LangGraph (multi-agent graph) |
