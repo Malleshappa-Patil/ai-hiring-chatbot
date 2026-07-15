@@ -9,7 +9,6 @@ Endpoints:
 - POST /chatbot/message             — Send a message and get AI response
 - GET  /chatbot/session/{id}        — Get session history
 - POST /chatbot/approve-jd          — Approve or reject the generated JD
-- POST /chatbot/post-to-platforms   — Post approved JD to all job platforms
 """
 import uuid
 import json
@@ -22,10 +21,6 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from backend.config import settings
-from backend.services.job_posting_service import (
-    post_jd_to_all_platforms,
-    PLATFORMS_DESCRIPTION,
-)
 
 router = APIRouter(prefix="/chatbot", tags=["AI Chatbot"])
 
@@ -735,12 +730,25 @@ async def send_message(request: ChatMessageRequest):
     elif current_step == "jd_review":
         msg_lower = request.message.lower()
         if any(word in msg_lower for word in ["approve", "approved", "looks good", "yes", "go ahead", "post it", "publish"]):
-            # JD approved → ask user WHERE to post before triggering workflow
-            session["step"] = "jd_posting_confirm"
+            # JD approved → trigger hiring workflow immediately
+            session["step"] = "workflow_running"
+            workflow_triggered = True
+            workflow_session_id = await _trigger_hiring_workflow(session)
+            session["workflow_session_id"] = workflow_session_id
             bot_message = (
-                "Great! The JD is approved ✅\n\n"
-                f"{PLATFORMS_DESCRIPTION}"
+                "🚀 **JD Approved! Hiring Workflow is now running!**\n\n"
+                "The complete pipeline has been kicked off. Candidates will be sourced "
+                "from the **Hiring Platform** (http://localhost:8001) where applicants upload their resumes.\n\n"
+                "Pipeline stages:\n"
+                "1. ✅ Job Description approved\n"
+                "2. 👀 Sourcing candidates from the Hiring Platform\n"
+                "3. 📋 Auto-shortlisting & ranking candidates\n"
+                "4. 📅 Scheduling & conducting interviews\n"
+                "5. 📄 Generating offer letters\n"
+                "6. 🎊 Completing onboarding\n\n"
+                "Track live progress on the **Workflow Monitor** page. 🚀"
             )
+            session["step"] = "complete"
         else:
             session["hiring_request"]["jd_feedback"] = request.message
             bot_message = (
@@ -753,71 +761,6 @@ async def send_message(request: ChatMessageRequest):
                 "timestamp": datetime.utcnow().isoformat()
             })
             bot_message = await _generate_jd_in_session(session)
-
-    # ── JD Posting Confirmation step ──────────────────────────────────────────
-    elif current_step == "jd_posting_confirm":
-        msg_lower = request.message.lower()
-        skip_words    = ["skip", "no", "don't post", "dont post", "skip posting", "no posting"]
-        confirm_words = ["yes", "yes, post", "post it", "go ahead", "confirm", "ok", "okay", "sure", "post"]
-
-        if any(word in msg_lower for word in skip_words):
-            # Skip external posting — go straight to workflow
-            session["step"] = "workflow_running"
-            workflow_triggered = True
-            workflow_session_id = await _trigger_hiring_workflow(session)
-            session["workflow_session_id"] = workflow_session_id
-            bot_message = (
-                "🚀 **Skipped external posting. Hiring workflow is now running!**\n\n"
-                "The complete pipeline has been kicked off:\n"
-                "1. ✅ Job Description approved\n"
-                "2. 👀 Monitoring applications (threshold: 10+ candidates)\n"
-                "3. 📋 Will auto-shortlist & rank candidates\n"
-                "4. 📅 Schedule & conduct interviews\n"
-                "5. 📄 Generate offer letters\n"
-                "6. 🎊 Complete onboarding\n\n"
-                "Track live progress on the **Workflow Monitor** page. 🚀"
-            )
-            session["step"] = "complete"
-
-        elif any(word in msg_lower for word in confirm_words):
-            # User confirmed — post to all platforms then trigger workflow
-            session["step"] = "workflow_running"
-
-            posting_msg = "📤 Posting your JD to all platforms now..."
-            session["messages"].append({
-                "role": "assistant",
-                "content": posting_msg,
-                "timestamp": datetime.utcnow().isoformat()
-            })
-
-            report = await post_jd_to_all_platforms(session)
-
-            workflow_triggered = True
-            workflow_session_id = await _trigger_hiring_workflow(session)
-            session["workflow_session_id"] = workflow_session_id
-
-            posting_results = report.to_chat_message()
-            bot_message = (
-                f"🎉 **JD Posted & Hiring Workflow Started!**\n\n"
-                f"{posting_results}\n\n"
-                "---\n"
-                "The full hiring pipeline is now running:\n"
-                "1. ✅ Job Description approved & posted\n"
-                "2. 👀 Monitoring applications (threshold: 10+ candidates)\n"
-                "3. 📋 Will auto-shortlist & rank candidates\n"
-                "4. 📅 Schedule & conduct interviews\n"
-                "5. 📄 Generate offer letters\n"
-                "6. 🎊 Complete onboarding\n\n"
-                "Track live progress on the **Workflow Monitor** page. 🚀"
-            )
-            session["step"] = "complete"
-
-        else:
-            bot_message = (
-                "I didn't quite catch that. Should I go ahead and post the JD?\n\n"
-                "- Type **'yes, post it'** to confirm posting to all platforms\n"
-                "- Type **'skip posting'** to start the hiring workflow without external posting"
-            )
 
     else:
         bot_message = "I'm not sure how to help with that right now. Please start a new session if needed."
@@ -882,51 +825,6 @@ async def approve_jd(request: JDApprovalRequest):
             "message": "JD sent back for revision.",
             "feedback": request.feedback
         }
-
-
-# ── Post JD to External Platforms ────────────────────────────────────────────────────
-
-class PostToPlatformsRequest(BaseModel):
-    session_id: str
-
-
-@router.post("/post-to-platforms")
-async def post_to_platforms(request: PostToPlatformsRequest):
-    """
-    Post the approved JD from a chat session to all configured external platforms.
-
-    Platforms attempted:
-    - Internal Job Board  (always included — already in DB)
-    - Recruitee           (if RECRUITEE_COMPANY_ID + RECRUITEE_API_TOKEN are set)
-    - Remotive            (email submission to jobs@remotive.com)
-    - We Work Remotely    (email submission to eds@weworkremotely.com)
-    """
-    session = _sessions.get(request.session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    if not session.get("jd_content"):
-        raise HTTPException(
-            status_code=400,
-            detail="No JD content found in this session. Generate a JD first."
-        )
-
-    report = await post_jd_to_all_platforms(session)
-    return {
-        "session_id": request.session_id,
-        "platforms_attempted": len(report.results),
-        "platforms_succeeded": sum(1 for r in report.results if r.success),
-        "results": [
-            {
-                "platform": r.platform,
-                "success": r.success,
-                "url": r.url,
-                "note": r.note,
-                "icon": r.icon,
-            }
-            for r in report.results
-        ],
-        "summary": report.to_chat_message(),
-    }
 
 
 # ── JD Download Endpoints ──────────────────────────────────────────────────────
