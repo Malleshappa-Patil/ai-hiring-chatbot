@@ -5,26 +5,41 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ── CSS Variables — Black & White Theme ─────────────────────── */
 :root {
-  --color-brand-50: #eef2ff;
-  --color-brand-100: #e0e7ff;
-  --color-brand-500: #6366f1;
-  --color-brand-600: #4f46e5;
-  --color-brand-700: #4338ca;
-  --color-brand-900: #1e1b4b;
+  /* Monochrome palette */
+  --bw-white:     #ffffff;
+  --bw-100:       #e8e8e8;
+  --bw-200:       #cccccc;
+  --bw-300:       #aaaaaa;
+  --bw-400:       #888888;
+  --bw-500:       #555555;
+  --bw-600:       #333333;
+  --bw-700:       #252525;
+  --bw-800:       #1a1a1a;
+  --bw-900:       #111111;
+  --bw-black:     #0a0a0a;
 
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-danger:  #ef4444;
-  --color-info:    #3b82f6;
+  /* Keep semantic colors subtle/muted */
+  --color-success: #6b9e7e;
+  --color-warning: #b8963e;
+  --color-danger:  #a05050;
+  --color-info:    #5a7ba8;
 
   --sidebar-width: 260px;
   --header-height: 64px;
-  --border-radius: 12px;
+  --border-radius: 10px;
+
+  /* Legacy brand vars — now remapped to grayscale */
+  --color-brand-50:  #e8e8e8;
+  --color-brand-100: #cccccc;
+  --color-brand-500: #555555;
+  --color-brand-600: #333333;
+  --color-brand-700: #1a1a1a;
+  --color-brand-900: #0a0a0a;
 }
 
 /* ── Base Styles ──────────────────────────────────────────────── */
-
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -39,10 +54,11 @@ html {
 
 body {
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background-color: #0f0f1a;
-  color: #e2e8f0;
+  background-color: #0a0a0a;
+  color: #e8e8e8;
   line-height: 1.6;
   min-height: 100vh;
+  /* No gradients or background blobs */
 }
 
 #root {
@@ -50,41 +66,34 @@ body {
 }
 
 /* ── Scrollbar ────────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track { background: #1a1a2e; }
-::-webkit-scrollbar-thumb { background: #4a4a6a; border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: #6366f1; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #111111; }
+::-webkit-scrollbar-thumb { background: #333333; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #555555; }
 
 /* ── Glass Effect ─────────────────────────────────────────────── */
 .glass {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, 0.03);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.07);
 }
 
 /* ── Card ─────────────────────────────────────────────────────── */
 .card {
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: #111111;
+  border: 1px solid #222222;
   border-radius: var(--border-radius);
   padding: 1.5rem;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease;
 }
 .card:hover {
-  border-color: rgba(99, 102, 241, 0.4);
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.1);
+  border-color: #3a3a3a;
 }
 
-/* ── Gradient Text ────────────────────────────────────────────── */
+/* ── Gradient Text — now just white ──────────────────────────── */
 .gradient-text {
-  background: linear-gradient(135deg, #6366f1, #a78bfa, #ec4899);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #ffffff;
 }
 
 /* ── Shimmer animation (loading skeleton) ─────────────────────── */
@@ -93,7 +102,7 @@ body {
   100% { background-position: 200% 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, #1a1a2e 25%, #2a2a4e 50%, #1a1a2e 75%);
+  background: linear-gradient(90deg, #111111 25%, #1e1e1e 50%, #111111 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: 6px;
@@ -111,7 +120,7 @@ body {
   animation: pulse-dot 1.5s ease-in-out infinite;
 }
 
-/* ── Status Badges ────────────────────────────────────────────── */
+/* ── Status Badges — muted monochrome ────────────────────────── */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -121,8 +130,8 @@ body {
   font-size: 0.75rem;
   font-weight: 500;
 }
-.badge-success { background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); }
-.badge-warning { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
-.badge-danger  { background: rgba(239,68,68,0.15);  color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
-.badge-info    { background: rgba(99,102,241,0.15); color: #818cf8; border: 1px solid rgba(99,102,241,0.3); }
-.badge-neutral { background: rgba(148,163,184,0.1); color: #94a3b8; border: 1px solid rgba(148,163,184,0.2); }
+.badge-success { background: rgba(107,158,126,0.12); color: #6b9e7e; border: 1px solid rgba(107,158,126,0.25); }
+.badge-warning { background: rgba(184,150,62,0.12);  color: #b8963e; border: 1px solid rgba(184,150,62,0.25); }
+.badge-danger  { background: rgba(160,80,80,0.12);   color: #a05050; border: 1px solid rgba(160,80,80,0.25); }
+.badge-info    { background: rgba(90,123,168,0.12);  color: #5a7ba8; border: 1px solid rgba(90,123,168,0.25); }
+.badge-neutral { background: rgba(255,255,255,0.06); color: #888888; border: 1px solid rgba(255,255,255,0.12); }

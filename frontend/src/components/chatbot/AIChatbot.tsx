@@ -27,7 +27,7 @@ interface LocalMessage {
 
 // ── Styles (inline for zero deps) ─────────────────────────────────────────────
 const styles = {
-  // Trigger button
+  // Trigger button — white/black monochrome
   trigger: {
     position: 'fixed' as const,
     bottom: '28px',
@@ -37,16 +37,15 @@ const styles = {
     alignItems: 'center',
     gap: '10px',
     padding: '14px 22px',
-    background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a78bfa 100%)',
-    border: 'none',
+    background: '#ffffff',
+    border: '1px solid #e8e8e8',
     borderRadius: '50px',
-    color: 'white',
+    color: '#0a0a0a',
     fontFamily: 'Inter, system-ui, sans-serif',
     fontSize: '14px',
     fontWeight: 600,
     cursor: 'pointer',
-    boxShadow: '0 4px 24px rgba(99,102,241,0.5), 0 0 0 0 rgba(99,102,241,0.4)',
-    animation: 'chatPulse 2.5s ease-in-out infinite',
+    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
     transition: 'all 0.2s ease',
     letterSpacing: '0.01em',
   },
@@ -60,19 +59,19 @@ const styles = {
     zIndex: 9998,
     display: 'flex',
     flexDirection: 'column' as const,
-    background: 'rgba(13, 13, 30, 0.97)',
+    background: '#111111',
     backdropFilter: 'blur(24px)',
     WebkitBackdropFilter: 'blur(24px)',
-    borderLeft: '1px solid rgba(99,102,241,0.2)',
-    boxShadow: '-8px 0 48px rgba(0,0,0,0.5), -1px 0 0 rgba(99,102,241,0.15)',
+    borderLeft: '1px solid #1e1e1e',
+    boxShadow: '-8px 0 48px rgba(0,0,0,0.6)',
     fontFamily: 'Inter, system-ui, sans-serif',
     transition: 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
   },
   // Header
   header: {
     padding: '18px 20px',
-    background: 'linear-gradient(135deg, rgba(99,102,241,0.15), rgba(139,92,246,0.1))',
-    borderBottom: '1px solid rgba(99,102,241,0.2)',
+    background: '#0a0a0a',
+    borderBottom: '1px solid #1e1e1e',
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
@@ -91,16 +90,16 @@ const styles = {
   // Input area
   inputArea: {
     padding: '16px',
-    borderTop: '1px solid rgba(99,102,241,0.15)',
-    background: 'rgba(255,255,255,0.02)',
+    borderTop: '1px solid #1e1e1e',
+    background: '#0a0a0a',
     flexShrink: 0,
   },
   downloadBtn: {
     padding: '6px 14px',
-    background: 'rgba(99,102,241,0.15)',
-    border: '1px solid rgba(99,102,241,0.3)',
+    background: '#1a1a1a',
+    border: '1px solid #2a2a2a',
     borderRadius: '20px',
-    color: '#a5b4fc',
+    color: '#aaaaaa',
     fontSize: '11px',
     fontWeight: 600,
     cursor: 'pointer',
@@ -123,7 +122,7 @@ function TypingDots() {
             width: '7px',
             height: '7px',
             borderRadius: '50%',
-            background: '#818cf8',
+            background: '#555555',
             animation: `typingDot 1.2s ease-in-out ${i * 0.2}s infinite`,
           }}
         />
@@ -153,7 +152,7 @@ function MessageBubble({ message }: { message: LocalMessage }) {
             width: '28px',
             height: '28px',
             borderRadius: '8px',
-            background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
+            background: '#ffffff',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -161,7 +160,7 @@ function MessageBubble({ message }: { message: LocalMessage }) {
             marginTop: '2px',
           }}
         >
-          <Bot size={15} color="white" />
+          <Bot size={15} color="#0a0a0a" />
         </div>
       )}
 
@@ -171,11 +170,9 @@ function MessageBubble({ message }: { message: LocalMessage }) {
           maxWidth: '85%',
           padding: '10px 14px',
           borderRadius: isBot ? '4px 14px 14px 14px' : '14px 4px 14px 14px',
-          background: isBot
-            ? 'rgba(255,255,255,0.06)'
-            : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-          border: isBot ? '1px solid rgba(255,255,255,0.08)' : 'none',
-          color: '#e2e8f0',
+          background: isBot ? '#1a1a1a' : '#ffffff',
+          border: isBot ? '1px solid #2a2a2a' : 'none',
+          color: isBot ? '#e8e8e8' : '#0a0a0a',
           fontSize: '13.5px',
           lineHeight: '1.6',
           wordBreak: 'break-word' as const,
@@ -198,17 +195,17 @@ function MessageBubble({ message }: { message: LocalMessage }) {
 // ── Step progress indicator ────────────────────────────────────────────────────
 function StepBadge({ step }: { step: string }) {
   const stepLabels: Record<string, { label: string; color: string }> = {
-    collect_details: { label: 'Collecting Details', color: '#818cf8' },
-    collect_job_title_and_skills: { label: 'Job Details', color: '#818cf8' },
-    collect_experience: { label: 'Experience', color: '#818cf8' },
-    collect_location: { label: 'Location', color: '#818cf8' },
-    collect_budget: { label: 'Budget', color: '#818cf8' },
-    collect_additional_requirements: { label: 'Requirements', color: '#818cf8' },
-    confirmation: { label: 'Confirm Request', color: '#f59e0b' },
-    jd_generation: { label: 'Generating JD', color: '#8b5cf6' },
-    jd_review: { label: 'Review JD', color: '#f59e0b' },
-    workflow_running: { label: 'Workflow Active', color: '#10b981' },
-    complete: { label: 'Complete ✓', color: '#10b981' },
+    collect_details: { label: 'Collecting Details', color: '#888888' },
+    collect_job_title_and_skills: { label: 'Job Details', color: '#888888' },
+    collect_experience: { label: 'Experience', color: '#888888' },
+    collect_location: { label: 'Location', color: '#888888' },
+    collect_budget: { label: 'Budget', color: '#888888' },
+    collect_additional_requirements: { label: 'Requirements', color: '#888888' },
+    confirmation: { label: 'Confirm Request', color: '#b8963e' },
+    jd_generation: { label: 'Generating JD', color: '#aaaaaa' },
+    jd_review: { label: 'Review JD', color: '#b8963e' },
+    workflow_running: { label: 'Workflow Active', color: '#6b9e7e' },
+    complete: { label: 'Complete ✓', color: '#6b9e7e' },
   }
 
   const info = stepLabels[step] || { label: step, color: '#64748b' }

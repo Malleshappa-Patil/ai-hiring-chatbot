@@ -26,12 +26,10 @@ function StatCard({ label, value, icon, trend, color }: StatCardProps) {
       transition: 'all 0.2s ease',
     }}
     onMouseEnter={e => {
-      ;(e.currentTarget as HTMLDivElement).style.borderColor = `${color}40`
-      ;(e.currentTarget as HTMLDivElement).style.boxShadow = `0 0 20px ${color}15`
+      ;(e.currentTarget as HTMLDivElement).style.borderColor = '#2a2a2a'
     }}
     onMouseLeave={e => {
       ;(e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(255,255,255,0.08)'
-      ;(e.currentTarget as HTMLDivElement).style.boxShadow = 'none'
     }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -72,11 +70,11 @@ export default function Dashboard() {
   })
 
   const stats = [
-    { label: 'Active Jobs',        value: metrics?.active_jobs ?? '—',          icon: <Briefcase size={18} />,  color: '#6366f1', trend: '+2 this week' },
-    { label: 'Total Candidates',   value: metrics?.total_candidates ?? '—',      icon: <Users size={18} />,      color: '#a78bfa', trend: '+18 new' },
-    { label: 'Interviews This Week', value: metrics?.interviews_this_week ?? '—', icon: <Calendar size={18} />,   color: '#10b981', trend: 'On track' },
-    { label: 'Offers Made',         value: metrics?.offers_made ?? '—',           icon: <TrendingUp size={18} />, color: '#f59e0b', trend: '3 accepted' },
-    { label: 'Screening Pass Rate', value: metrics ? `${metrics.screening_pass_rate}%` : '—',   icon: <BarChart2 size={18} />, color: '#ec4899' },
+    { label: 'Active Jobs',          value: metrics?.active_jobs ?? '—',           icon: <Briefcase size={18} />,  color: '#888888', trend: '+2 this week' },
+    { label: 'Total Candidates',     value: metrics?.total_candidates ?? '—',       icon: <Users size={18} />,      color: '#888888', trend: '+18 new' },
+    { label: 'Interviews This Week', value: metrics?.interviews_this_week ?? '—',   icon: <Calendar size={18} />,   color: '#6b9e7e', trend: 'On track' },
+    { label: 'Offers Made',          value: metrics?.offers_made ?? '—',            icon: <TrendingUp size={18} />, color: '#b8963e', trend: '3 accepted' },
+    { label: 'Screening Pass Rate',  value: metrics ? `${metrics.screening_pass_rate}%` : '—', icon: <BarChart2 size={18} />, color: '#888888' },
   ]
 
   const agentStatusItems = [
@@ -95,11 +93,11 @@ export default function Dashboard() {
       <div style={{ marginBottom: '32px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
           <div style={{
-            width: '40px', height: '40px', borderRadius: '12px',
-            background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
+            width: '40px', height: '40px', borderRadius: '10px',
+            background: '#ffffff',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
-            <Bot size={22} color="white" />
+            <Bot size={22} color="#0a0a0a" />
           </div>
           <div>
             <h1 style={{ fontSize: '24px', fontWeight: 700, color: '#e2e8f0' }}>
@@ -133,8 +131,8 @@ export default function Dashboard() {
           borderRadius: '14px',
           padding: '24px',
         }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#e2e8f0', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Briefcase size={18} color="#6366f1" /> Recent Jobs
+          <h2 style={{ fontSize: '16px', fontWeight: 600, color: '#e8e8e8', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Briefcase size={18} color="#888888" /> Recent Jobs
           </h2>
           {isLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

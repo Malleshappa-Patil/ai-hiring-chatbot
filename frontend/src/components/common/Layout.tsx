@@ -33,14 +33,14 @@ export default function Layout() {
   }
 
   return (
-    <div style={{ display: 'flex', minHeight: '100vh', background: '#0f0f1a' }}>
+    <div style={{ display: 'flex', minHeight: '100vh', background: '#0a0a0a' }}>
       {/* ── Sidebar ───────────────────────────────────────────── */}
       <aside
         style={{
           width: collapsed ? '72px' : '260px',
           minHeight: '100vh',
-          background: 'rgba(255,255,255,0.03)',
-          borderRight: '1px solid rgba(255,255,255,0.07)',
+          background: '#111111',
+          borderRight: '1px solid #1e1e1e',
           display: 'flex',
           flexDirection: 'column',
           transition: 'width 0.25s ease',
@@ -54,13 +54,13 @@ export default function Layout() {
       >
         {/* Logo + Toggle */}
         {collapsed ? (
-          /* ── Collapsed header: just the toggle button, centered ── */
+          /* ── Collapsed header ── */
           <div style={{
             padding: '16px 12px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            borderBottom: '1px solid rgba(255,255,255,0.07)',
+            borderBottom: '1px solid #1e1e1e',
             minHeight: '64px',
           }}>
             <button
@@ -69,10 +69,10 @@ export default function Layout() {
               style={{
                 width: '40px',
                 height: '40px',
-                borderRadius: '10px',
-                background: 'rgba(99,102,241,0.12)',
-                border: '1px solid rgba(99,102,241,0.2)',
-                color: '#818cf8',
+                borderRadius: '8px',
+                background: '#1a1a1a',
+                border: '1px solid #2a2a2a',
+                color: '#888888',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -82,27 +82,27 @@ export default function Layout() {
                 outline: 'none',
               }}
               onMouseEnter={e => {
-                ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.25)'
-                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.45)'
-                ;(e.currentTarget as HTMLButtonElement).style.color = '#a5b4fc'
+                ;(e.currentTarget as HTMLButtonElement).style.background = '#222222'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#3a3a3a'
+                ;(e.currentTarget as HTMLButtonElement).style.color = '#cccccc'
               }}
               onMouseLeave={e => {
-                ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.12)'
-                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.2)'
-                ;(e.currentTarget as HTMLButtonElement).style.color = '#818cf8'
+                ;(e.currentTarget as HTMLButtonElement).style.background = '#1a1a1a'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#2a2a2a'
+                ;(e.currentTarget as HTMLButtonElement).style.color = '#888888'
               }}
             >
               <Menu size={16} />
             </button>
           </div>
         ) : (
-          /* ── Expanded header: logo + text + collapse button ── */
+          /* ── Expanded header ── */
           <div style={{
             padding: '16px 12px',
             display: 'flex',
             alignItems: 'center',
             gap: '12px',
-            borderBottom: '1px solid rgba(255,255,255,0.07)',
+            borderBottom: '1px solid #1e1e1e',
             minHeight: '64px',
             justifyContent: 'space-between',
           }}>
@@ -110,18 +110,18 @@ export default function Layout() {
               <div style={{
                 width: '36px',
                 height: '36px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
+                borderRadius: '8px',
+                background: '#ffffff',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
               }}>
-                <Bot size={20} color="white" />
+                <Bot size={20} color="#0a0a0a" />
               </div>
               <div style={{ overflow: 'hidden' }}>
-                <div style={{ fontWeight: 700, fontSize: '14px', color: '#e2e8f0', lineHeight: 1.2, whiteSpace: 'nowrap' }}>AI Hiring</div>
-                <div style={{ fontSize: '11px', color: '#64748b' }}>Platform</div>
+                <div style={{ fontWeight: 700, fontSize: '14px', color: '#ffffff', lineHeight: 1.2, whiteSpace: 'nowrap' }}>AI Hiring</div>
+                <div style={{ fontSize: '11px', color: '#555555' }}>Platform</div>
               </div>
             </div>
 
@@ -131,10 +131,10 @@ export default function Layout() {
               style={{
                 width: '30px',
                 height: '30px',
-                borderRadius: '8px',
-                background: 'rgba(99,102,241,0.12)',
-                border: '1px solid rgba(99,102,241,0.2)',
-                color: '#818cf8',
+                borderRadius: '6px',
+                background: '#1a1a1a',
+                border: '1px solid #2a2a2a',
+                color: '#555555',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
@@ -144,14 +144,14 @@ export default function Layout() {
                 outline: 'none',
               }}
               onMouseEnter={e => {
-                ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.25)'
-                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.45)'
-                ;(e.currentTarget as HTMLButtonElement).style.color = '#a5b4fc'
+                ;(e.currentTarget as HTMLButtonElement).style.background = '#222222'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#3a3a3a'
+                ;(e.currentTarget as HTMLButtonElement).style.color = '#aaaaaa'
               }}
               onMouseLeave={e => {
-                ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(99,102,241,0.12)'
-                ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(99,102,241,0.2)'
-                ;(e.currentTarget as HTMLButtonElement).style.color = '#818cf8'
+                ;(e.currentTarget as HTMLButtonElement).style.background = '#1a1a1a'
+                ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#2a2a2a'
+                ;(e.currentTarget as HTMLButtonElement).style.color = '#555555'
               }}
             >
               <ChevronRight size={15} style={{ transform: 'rotate(180deg)' }} />
@@ -170,14 +170,14 @@ export default function Layout() {
                 alignItems: 'center',
                 gap: '12px',
                 padding: '10px 12px',
-                borderRadius: '10px',
+                borderRadius: '8px',
                 marginBottom: '4px',
                 textDecoration: 'none',
                 fontSize: '14px',
                 fontWeight: isActive ? 600 : 400,
-                color: isActive ? '#818cf8' : '#94a3b8',
-                background: isActive ? 'rgba(99,102,241,0.12)' : 'transparent',
-                border: isActive ? '1px solid rgba(99,102,241,0.25)' : '1px solid transparent',
+                color: isActive ? '#ffffff' : '#555555',
+                background: isActive ? '#1e1e1e' : 'transparent',
+                border: isActive ? '1px solid #2a2a2a' : '1px solid transparent',
                 transition: 'all 0.15s ease',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
@@ -185,13 +185,13 @@ export default function Layout() {
             >
               <Icon size={18} style={{ flexShrink: 0 }} />
               {!collapsed && <span style={{ flex: 1 }}>{label}</span>}
-              {!collapsed && <ChevronRight size={14} style={{ opacity: 0.4 }} />}
+              {!collapsed && <ChevronRight size={14} style={{ opacity: 0.3 }} />}
             </NavLink>
           ))}
         </nav>
 
         {/* Logout */}
-        <div style={{ padding: '12px 8px', borderTop: '1px solid rgba(255,255,255,0.07)' }}>
+        <div style={{ padding: '12px 8px', borderTop: '1px solid #1e1e1e' }}>
           <button
             onClick={handleLogout}
             style={{
@@ -200,10 +200,10 @@ export default function Layout() {
               alignItems: 'center',
               gap: '12px',
               padding: '10px 12px',
-              borderRadius: '10px',
+              borderRadius: '8px',
               background: 'none',
               border: '1px solid transparent',
-              color: '#ef4444',
+              color: '#666666',
               cursor: 'pointer',
               fontSize: '14px',
               fontWeight: 500,
@@ -212,12 +212,14 @@ export default function Layout() {
               overflow: 'hidden',
             }}
             onMouseEnter={e => {
-              ;(e.currentTarget as HTMLButtonElement).style.background = 'rgba(239,68,68,0.1)'
-              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'rgba(239,68,68,0.2)'
+              ;(e.currentTarget as HTMLButtonElement).style.background = '#1a1a1a'
+              ;(e.currentTarget as HTMLButtonElement).style.borderColor = '#2a2a2a'
+              ;(e.currentTarget as HTMLButtonElement).style.color = '#cccccc'
             }}
             onMouseLeave={e => {
               ;(e.currentTarget as HTMLButtonElement).style.background = 'none'
               ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'transparent'
+              ;(e.currentTarget as HTMLButtonElement).style.color = '#666666'
             }}
           >
             <LogOut size={18} style={{ flexShrink: 0 }} />
@@ -225,9 +227,6 @@ export default function Layout() {
           </button>
         </div>
       </aside>
-
-
-
 
       {/* ── Main Content ──────────────────────────────────────── */}
       <main

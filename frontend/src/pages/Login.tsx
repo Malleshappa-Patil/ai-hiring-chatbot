@@ -16,7 +16,7 @@ export default function Login() {
     onSuccess: (data) => {
       localStorage.setItem('access_token', data.access_token)
       localStorage.setItem('refresh_token', data.refresh_token)
-      toast.success('Welcome back! 🚀')
+      toast.success('Welcome back!')
       navigate('/dashboard')
     },
     onError: () => {
@@ -33,7 +33,7 @@ export default function Login() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0f0f1a',
+      background: '#0a0a0a',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -41,28 +41,21 @@ export default function Login() {
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Background blobs */}
+      {/* Subtle background texture */}
       <div style={{
-        position: 'absolute', width: '500px', height: '500px',
-        borderRadius: '50%', top: '-100px', left: '-100px',
-        background: 'radial-gradient(circle, rgba(99,102,241,0.15) 0%, transparent 70%)',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', width: '400px', height: '400px',
-        borderRadius: '50%', bottom: '-50px', right: '-50px',
-        background: 'radial-gradient(circle, rgba(167,139,250,0.12) 0%, transparent 70%)',
+        position: 'absolute', inset: 0,
+        backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.03) 1px, transparent 0)',
+        backgroundSize: '32px 32px',
         pointerEvents: 'none',
       }} />
 
       {/* Login card */}
       <div style={{
         width: '100%',
-        maxWidth: '420px',
-        background: 'rgba(255,255,255,0.04)',
-        backdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.1)',
-        borderRadius: '20px',
+        maxWidth: '400px',
+        background: '#111111',
+        border: '1px solid #1e1e1e',
+        borderRadius: '14px',
         padding: '40px',
         position: 'relative',
         zIndex: 1,
@@ -70,20 +63,19 @@ export default function Login() {
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '32px' }}>
           <div style={{
-            width: '56px', height: '56px', borderRadius: '16px',
-            background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
+            width: '52px', height: '52px', borderRadius: '12px',
+            background: '#ffffff',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             margin: '0 auto 16px',
-            boxShadow: '0 0 30px rgba(99,102,241,0.4)',
           }}>
-            <Bot size={28} color="white" />
+            <Bot size={26} color="#0a0a0a" />
           </div>
           <h1 style={{
-            fontSize: '24px', fontWeight: 700, color: '#e2e8f0', marginBottom: '8px',
+            fontSize: '22px', fontWeight: 700, color: '#ffffff', marginBottom: '6px',
           }}>
             AI Hiring Platform
           </h1>
-          <p style={{ color: '#64748b', fontSize: '14px' }}>
+          <p style={{ color: '#555555', fontSize: '13px' }}>
             Enterprise Recruitment Automation
           </p>
         </div>
@@ -91,12 +83,12 @@ export default function Login() {
         {/* Form */}
         <form onSubmit={handleSubmit}>
           {/* Email */}
-          <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginBottom: '8px' }}>
+          <div style={{ marginBottom: '14px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#888888', marginBottom: '7px' }}>
               Email Address
             </label>
             <div style={{ position: 'relative' }}>
-              <Mail size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#4a5568' }} />
+              <Mail size={15} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: '#444444' }} />
               <input
                 id="email"
                 type="email"
@@ -104,25 +96,25 @@ export default function Login() {
                 onChange={e => setEmail(e.target.value)}
                 placeholder="recruiter@company.com"
                 style={{
-                  width: '100%', padding: '12px 14px 12px 42px',
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px', color: '#e2e8f0', fontSize: '14px',
+                  width: '100%', padding: '11px 13px 11px 38px',
+                  background: '#1a1a1a', border: '1px solid #2a2a2a',
+                  borderRadius: '8px', color: '#e8e8e8', fontSize: '14px',
                   outline: 'none', transition: 'border-color 0.2s',
                   boxSizing: 'border-box',
                 }}
-                onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.6)'}
-                onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+                onFocus={e => e.target.style.borderColor = '#555555'}
+                onBlur={e => e.target.style.borderColor = '#2a2a2a'}
               />
             </div>
           </div>
 
           {/* Password */}
-          <div style={{ marginBottom: '24px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#94a3b8', marginBottom: '8px' }}>
+          <div style={{ marginBottom: '22px' }}>
+            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#888888', marginBottom: '7px' }}>
               Password
             </label>
             <div style={{ position: 'relative' }}>
-              <Lock size={16} style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', color: '#4a5568' }} />
+              <Lock size={15} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: '#444444' }} />
               <input
                 id="password"
                 type={showPwd ? 'text' : 'password'}
@@ -130,25 +122,25 @@ export default function Login() {
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
                 style={{
-                  width: '100%', padding: '12px 42px 12px 42px',
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px', color: '#e2e8f0', fontSize: '14px',
+                  width: '100%', padding: '11px 40px 11px 38px',
+                  background: '#1a1a1a', border: '1px solid #2a2a2a',
+                  borderRadius: '8px', color: '#e8e8e8', fontSize: '14px',
                   outline: 'none', transition: 'border-color 0.2s',
                   boxSizing: 'border-box',
                 }}
-                onFocus={e => e.target.style.borderColor = 'rgba(99,102,241,0.6)'}
-                onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+                onFocus={e => e.target.style.borderColor = '#555555'}
+                onBlur={e => e.target.style.borderColor = '#2a2a2a'}
               />
               <button
                 type="button"
                 onClick={() => setShowPwd(!showPwd)}
                 style={{
-                  position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', color: '#64748b', cursor: 'pointer',
+                  position: 'absolute', right: '13px', top: '50%', transform: 'translateY(-50%)',
+                  background: 'none', border: 'none', color: '#555555', cursor: 'pointer',
                   display: 'flex', alignItems: 'center',
                 }}
               >
-                {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
+                {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
               </button>
             </div>
           </div>
@@ -159,33 +151,31 @@ export default function Login() {
             type="submit"
             disabled={loginMutation.isPending}
             style={{
-              width: '100%', padding: '13px',
-              background: loginMutation.isPending
-                ? 'rgba(99,102,241,0.5)'
-                : 'linear-gradient(135deg, #6366f1, #4f46e5)',
-              border: 'none', borderRadius: '10px',
-              color: 'white', fontSize: '15px', fontWeight: 600,
+              width: '100%', padding: '12px',
+              background: loginMutation.isPending ? '#333333' : '#ffffff',
+              border: 'none', borderRadius: '8px',
+              color: loginMutation.isPending ? '#888888' : '#0a0a0a',
+              fontSize: '14px', fontWeight: 600,
               cursor: loginMutation.isPending ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              transition: 'opacity 0.2s',
-              boxShadow: '0 4px 15px rgba(99,102,241,0.35)',
+              transition: 'background 0.2s, color 0.2s',
             }}
           >
             {loginMutation.isPending ? (
-              <><Loader2 size={18} style={{ animation: 'spin 1s linear infinite' }} /> Signing in...</>
+              <><Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} /> Signing in...</>
             ) : 'Sign In'}
           </button>
         </form>
 
         <div style={{
-          marginTop: '24px', padding: '16px',
-          background: 'rgba(99,102,241,0.08)', borderRadius: '10px',
-          border: '1px solid rgba(99,102,241,0.2)',
+          marginTop: '20px', padding: '14px',
+          background: '#1a1a1a', borderRadius: '8px',
+          border: '1px solid #2a2a2a',
         }}>
-          <p style={{ fontSize: '12px', color: '#64748b', textAlign: 'center', marginBottom: '8px', fontWeight: 600 }}>
+          <p style={{ fontSize: '11px', color: '#555555', textAlign: 'center', marginBottom: '5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
             Demo Credentials
           </p>
-          <p style={{ fontSize: '12px', color: '#94a3b8', textAlign: 'center' }}>
+          <p style={{ fontSize: '13px', color: '#888888', textAlign: 'center' }}>
             admin@hiring.com / admin123
           </p>
         </div>
