@@ -16,6 +16,49 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs")
 
 
+# ── Public Jobs (no auth) ─────────────────────────────────────────
+@router.get("/public")
+async def list_jobs_public(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns all jobs without requiring authentication.
+    Used by the HireBoard candidate-facing platform to display
+    jobs created in the main platform.
+    """
+    query = select(Job).order_by(desc(Job.created_at))
+    count_result = await db.execute(select(func.count()).select_from(query.subquery()))
+    total = count_result.scalar() or 0
+
+    result = await db.execute(
+        query.offset((page - 1) * page_size).limit(page_size)
+    )
+    jobs = result.scalars().all()
+
+    items = []
+    for j in jobs:
+        items.append({
+            "id":               j.id,
+            "title":            j.title,
+            "department":       j.department,
+            "location":         j.location,
+            "job_type":         j.job_type,
+            "experience_level": j.experience_level,
+            "hiring_goal":      j.hiring_goal,
+            "status":           j.status,
+            "created_at":       j.created_at.isoformat() if j.created_at else None,
+        })
+
+    return {
+        "items": items,
+        "total": total,
+        "page":  page,
+        "page_size": page_size,
+    }
+
+
 # ── List Jobs ─────────────────────────────────────────────────────
 @router.get("/", response_model=PaginatedResponse)
 async def list_jobs(
@@ -327,6 +370,20 @@ async def delete_job(
     
     await db.delete(job)
     await db.commit()
+
+    # ── Also remove from HireBoard (localhost:8001) ───────────────
+    try:
+        import urllib.request as _req
+        hb_req = _req.Request(
+            f"http://localhost:8001/jobs/{job_id}",
+            method="DELETE",
+        )
+        with _req.urlopen(hb_req, timeout=2):
+            pass
+        logger.info(f"[Jobs] ✅ Job {job_id} removed from HireBoard")
+    except Exception as e:
+        logger.warning(f"[Jobs] ⚠️  Could not remove job {job_id} from HireBoard: {e}")
+
     return None
 
 

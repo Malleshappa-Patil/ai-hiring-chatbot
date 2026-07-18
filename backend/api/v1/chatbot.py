@@ -522,6 +522,41 @@ async def _trigger_hiring_workflow(session: dict) -> str:
     except Exception as e:
         print(f"[Chatbot] ⚠️  Failed to persist Job to DB: {e}")
 
+    # ── Also POST job to HireBoard (localhost:8001) so it appears on the job board ──
+    try:
+        import urllib.request as _urllib_request
+        import json as _json
+
+        skills_list = hr.get("skills_required", [])
+        if isinstance(skills_list, str):
+            skills_list = [s.strip() for s in skills_list.split(",") if s.strip()]
+
+        hireboard_job = {
+            "title":      job_title,
+            "department": str(hr.get("department", "Engineering")),
+            "location":   str(hr.get("location", "Remote")),
+            "experience": str(hr.get("experience_years", "Not specified")),
+            "salary":     str(hr.get("budget", "Competitive")),
+            "skills":     skills_list,
+            "description": session.get("jd_content", "")[:500] if session.get("jd_content") else "",
+            "status":     "open",
+            # Use company_id from session if recruiter set it, else default company
+            "company_id": session.get("company_id", "company-001"),
+        }
+
+        payload_bytes = _json.dumps(hireboard_job).encode("utf-8")
+        req = _urllib_request.Request(
+            "http://localhost:8001/jobs",
+            data=payload_bytes,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with _urllib_request.urlopen(req, timeout=3) as resp:
+            result = _json.loads(resp.read().decode())
+            print(f"[Chatbot] ✅ Job posted to HireBoard: {result.get('job', {}).get('id')} ({job_title})")
+    except Exception as e:
+        print(f"[Chatbot] ⚠️  Could not post job to HireBoard: {e}")
+
     return workflow_id
 
 
