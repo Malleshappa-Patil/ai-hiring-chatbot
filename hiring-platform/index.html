@@ -3,298 +3,223 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="description" content="TalentHub – Discover exciting career opportunities and apply with your resume. Find jobs in engineering, product, design and more." />
-  <meta name="theme-color" content="#080c14" />
-  <title>TalentHub — Find Your Next Opportunity</title>
-  <link rel="stylesheet" href="style.css" />
+  <meta name="description" content="HireBoard — Browse open positions and apply with your resume. Powered by AI Hiring Agent." />
+  <title>HireBoard — Job Openings</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
 
-  <!-- ── Header ────────────────────────────────────────────────── -->
+  <!-- ── Header ──────────────────────────────────────────────── -->
   <header class="header">
     <div class="container">
       <div class="header-inner">
-        <a class="logo" href="#" aria-label="TalentHub Home">
-          <div class="logo-icon">🚀</div>
-          <div class="logo-text">
-            <span class="logo-name">TalentHub</span>
-            <span class="logo-tagline">AI-Powered Hiring Platform</span>
+        <div class="logo">
+          <div class="logo-mark">H</div>
+          <div>
+            <div class="logo-name">HireBoard</div>
+            <div class="logo-sub">AI-Powered Hiring</div>
           </div>
-        </a>
-
-        <nav class="header-nav" aria-label="Main navigation">
-          <button class="nav-link active" id="nav-jobs" onclick="scrollToJobs()">Jobs</button>
-          <button class="nav-link" id="nav-about" onclick="scrollToAbout()">How it Works</button>
-          <button id="btn-header-apply" class="btn-apply-header" onclick="openModal(null)">
-            Apply Now
+        </div>
+        <nav class="header-nav">
+          <a href="#companies" class="nav-link">Companies</a>
+          <a href="#" class="nav-link" onclick="scrollToJobs(); return false;">Jobs</a>
+          <button id="btn-add-company" class="btn-add-company" onclick="openCompanyModal()">
+            + Add Company
           </button>
         </nav>
       </div>
     </div>
   </header>
 
-  <!-- ── Hero ──────────────────────────────────────────────────── -->
-  <section class="hero" aria-labelledby="hero-title">
+  <!-- ── Page Title ───────────────────────────────────────────── -->
+  <div class="page-intro">
     <div class="container">
-      <div class="hero-badge">
-        <span class="dot" aria-hidden="true"></span>
-        AI-Powered Recruitment — Hiring Smarter
-      </div>
+      <h1 class="page-title">Open Positions</h1>
+      <p class="page-sub">Jobs are automatically posted when a recruiter approves a JD in the AI Hiring Chatbot</p>
+    </div>
+  </div>
 
-      <h1 class="hero-title" id="hero-title">
-        Find Your Next<br/>
-        <span class="gradient-text">Dream Career</span>
-      </h1>
-
-      <p class="hero-subtitle">
-        Upload your resume once and let our AI hiring agent match you with the perfect role.
-        Transparent process, faster results.
-      </p>
-
-      <div class="hero-stats" role="list">
-        <div class="hero-stat" role="listitem">
-          <div class="value" id="stat-jobs">—</div>
-          <div class="label">Open Positions</div>
-        </div>
-        <div class="hero-stat" role="listitem">
-          <div class="value" id="stat-candidates">—</div>
-          <div class="label">Applications This Week</div>
-        </div>
-        <div class="hero-stat" role="listitem">
-          <div class="value">48h</div>
-          <div class="label">Average Response Time</div>
+  <!-- ── Companies + Jobs ────────────────────────────────────── -->
+  <main id="companies" class="main-content">
+    <div class="container">
+      <div id="companies-container" aria-live="polite">
+        <!-- Populated by JS -->
+        <div class="skeleton-section">
+          <div class="skeleton-company-header"></div>
+          <div class="skeleton-jobs">
+            <div class="skeleton-card"></div>
+            <div class="skeleton-card"></div>
+          </div>
         </div>
       </div>
     </div>
-  </section>
+  </main>
 
-  <!-- ── Jobs Section ───────────────────────────────────────────── -->
-  <section id="jobs-section" aria-labelledby="jobs-heading">
-    <div class="container">
-      <div class="section-header">
-        <div>
-          <h2 class="section-title" id="jobs-heading">Open Positions</h2>
-          <p class="section-subtitle">All roles are sourced by our AI hiring system</p>
-        </div>
-        <span class="badge-count" id="jobs-count" aria-live="polite">Loading…</span>
-      </div>
-
-      <div id="jobs-container" class="jobs-grid" aria-live="polite" aria-label="Job listings">
-        <div class="jobs-loading">
-          <div class="loader-ring" aria-hidden="true"></div>
-          <span>Loading positions…</span>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── How it Works ───────────────────────────────────────────── -->
-  <section id="about-section" style="padding: 0 0 80px;">
-    <div class="container">
-      <div class="section-header">
-        <div>
-          <h2 class="section-title">How TalentHub Works</h2>
-          <p class="section-subtitle">Powered by an AI Hiring Agent</p>
-        </div>
-      </div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;">
-        <div style="background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 28px;">
-          <div style="font-size: 36px; margin-bottom: 14px;">📋</div>
-          <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">1. Job Posted</h3>
-          <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">A recruiter uses our AI Chatbot to define the role, and the JD is published here automatically.</p>
-        </div>
-        <div style="background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 28px;">
-          <div style="font-size: 36px; margin-bottom: 14px;">📤</div>
-          <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">2. You Apply</h3>
-          <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">Upload your resume and fill out a quick form. Your application is stored securely on the platform.</p>
-        </div>
-        <div style="background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 28px;">
-          <div style="font-size: 36px; margin-bottom: 14px;">🤖</div>
-          <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">3. AI Screens</h3>
-          <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">Our AI Agent fetches your resume, scores it against the JD, and shortlists top candidates automatically.</p>
-        </div>
-        <div style="background: var(--bg-card); border: 1px solid var(--glass-border); border-radius: var(--radius-lg); padding: 28px;">
-          <div style="font-size: 36px; margin-bottom: 14px;">🎉</div>
-          <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 8px;">4. You're Hired</h3>
-          <p style="font-size: 13px; color: var(--text-secondary); line-height: 1.6;">Shortlisted candidates receive interview invites, offer letters, and onboarding — all handled by AI.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- ── Application Modal ─────────────────────────────────────── -->
-  <div id="apply-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- Modal: Add / Edit Company                                  -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="company-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="company-modal-heading">
     <div class="modal">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-heading" id="company-modal-heading">Add Company</h2>
+          <p class="modal-job-label">Fill in the company details below</p>
+        </div>
+        <button class="modal-close" onclick="closeCompanyModal()" aria-label="Close">✕</button>
+      </div>
+
+      <form id="company-form" novalidate>
+        <input type="hidden" id="editing-company-id" />
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="co-name">Company Name <span class="req">*</span></label>
+            <input id="co-name" type="text" class="form-input" placeholder="e.g. Acme Corp" required />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="co-industry">Industry</label>
+            <input id="co-industry" type="text" class="form-input" placeholder="e.g. Technology" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="co-tagline">Tagline</label>
+          <input id="co-tagline" type="text" class="form-input" placeholder="e.g. Building the future, one hire at a time" />
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label" for="co-location">Location</label>
+            <input id="co-location" type="text" class="form-input" placeholder="e.g. Bangalore, India" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="co-team-size">Team Size</label>
+            <input id="co-team-size" type="text" class="form-input" placeholder="e.g. 50–200" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label" for="co-website">Website</label>
+          <input id="co-website" type="url" class="form-input" placeholder="https://example.com" />
+        </div>
+
+        <button type="submit" id="company-submit-btn" class="btn-submit">
+          <span class="spinner" aria-hidden="true"></span>
+          <span class="btn-label">Save Company</span>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- Modal: Apply for Job                                       -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="apply-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-heading">
+    <div class="modal" role="document">
 
       <!-- Form View -->
       <div id="form-view">
         <div class="modal-header">
           <div>
-            <h2 class="modal-title" id="modal-title">Apply for this Role</h2>
-            <p class="modal-subtitle" id="modal-job-name">Loading job details…</p>
+            <h2 class="modal-heading" id="modal-heading">Apply for this Role</h2>
+            <p class="modal-job-label" id="modal-job-label">Loading…</p>
           </div>
-          <button class="modal-close" onclick="closeModal()" aria-label="Close application form">✕</button>
+          <button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button>
         </div>
 
         <form id="apply-form" novalidate>
-          <input type="hidden" id="field-job-id" name="job_id" />
-          <input type="hidden" id="field-job-title" name="job_title" />
+          <input type="hidden" id="field-job-id" />
+          <input type="hidden" id="field-job-title" />
+          <input type="hidden" id="field-company-id" />
 
-          <div class="form-grid">
-            <!-- Full Name -->
+          <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="field-name">
-                Full Name <span class="required">*</span>
-              </label>
-              <input
-                id="field-name"
-                name="name"
-                type="text"
-                class="form-input"
-                placeholder="Jane Smith"
-                required
-                autocomplete="name"
-              />
+              <label class="form-label" for="field-name">Full Name <span class="req">*</span></label>
+              <input id="field-name" name="name" type="text" class="form-input" placeholder="Jane Smith" required autocomplete="name" />
             </div>
-
-            <!-- Email -->
             <div class="form-group">
-              <label class="form-label" for="field-email">
-                Email Address <span class="required">*</span>
-              </label>
-              <input
-                id="field-email"
-                name="email"
-                type="email"
-                class="form-input"
-                placeholder="jane@example.com"
-                required
-                autocomplete="email"
-              />
+              <label class="form-label" for="field-email">Email <span class="req">*</span></label>
+              <input id="field-email" name="email" type="email" class="form-input" placeholder="jane@example.com" required autocomplete="email" />
             </div>
+          </div>
 
-            <!-- Phone -->
+          <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="field-phone">Phone Number</label>
-              <input
-                id="field-phone"
-                name="phone"
-                type="tel"
-                class="form-input"
-                placeholder="+91 98765 43210"
-                autocomplete="tel"
-              />
+              <label class="form-label" for="field-phone">Phone</label>
+              <input id="field-phone" name="phone" type="tel" class="form-input" placeholder="+91 98765 43210" autocomplete="tel" />
             </div>
-
-            <!-- LinkedIn -->
             <div class="form-group">
-              <label class="form-label" for="field-linkedin">LinkedIn Profile</label>
-              <input
-                id="field-linkedin"
-                name="linkedin_url"
-                type="url"
-                class="form-input"
-                placeholder="https://linkedin.com/in/..."
-              />
+              <label class="form-label" for="field-linkedin">LinkedIn</label>
+              <input id="field-linkedin" name="linkedin_url" type="url" class="form-input" placeholder="https://linkedin.com/in/..." />
             </div>
+          </div>
 
-            <!-- Cover Note -->
-            <div class="form-group full">
-              <label class="form-label" for="field-cover">Why are you a great fit?</label>
-              <textarea
-                id="field-cover"
-                name="cover_note"
-                class="form-textarea"
-                placeholder="Briefly tell us what excites you about this role and what you'd bring to the team…"
-                rows="3"
-              ></textarea>
+          <div class="form-group">
+            <label class="form-label" for="field-cover">Why are you a good fit?</label>
+            <textarea id="field-cover" name="cover_note" class="form-textarea" placeholder="Tell us briefly what excites you about this role…" rows="3"></textarea>
+          </div>
+
+          <!-- Resume Upload -->
+          <div class="form-group">
+            <label class="form-label">Resume / CV <span class="req">*</span></label>
+            <div id="drop-zone" class="drop-zone" role="button" tabindex="0"
+              aria-label="Upload resume"
+              onkeydown="if(event.key==='Enter'||event.key===' '){document.getElementById('resume-input').click()}"
+              onclick="document.getElementById('resume-input').click()">
+              <div class="drop-icon">↑</div>
+              <div class="drop-text">Drag &amp; drop or <u>browse</u></div>
+              <div class="drop-hint">PDF, DOC, DOCX — Max 10 MB</div>
+              <input id="resume-input" type="file" name="resume" accept=".pdf,.doc,.docx" required
+                aria-label="Resume file" onchange="handleFileSelect(this)" style="display:none;" />
             </div>
-
-            <!-- Resume Upload -->
-            <div class="form-group full">
-              <label class="form-label">
-                Resume / CV <span class="required">*</span>
-              </label>
-              <div
-                id="drop-zone"
-                class="drop-zone"
-                role="button"
-                tabindex="0"
-                aria-label="Upload resume file"
-                onkeydown="if(event.key==='Enter'||event.key===' '){document.getElementById('resume-input').click()}"
-              >
-                <div id="drop-zone-idle">
-                  <div class="drop-zone-icon">📄</div>
-                  <div class="drop-zone-text">
-                    Drag & drop your resume or <strong onclick="document.getElementById('resume-input').click()">browse</strong>
-                  </div>
-                  <div class="drop-zone-hint">PDF, DOC, DOCX — Max 10 MB</div>
-                </div>
-                <input
-                  id="resume-input"
-                  type="file"
-                  name="resume"
-                  accept=".pdf,.doc,.docx"
-                  required
-                  aria-label="Resume file input"
-                  onchange="handleFileSelect(this)"
-                />
+            <div id="file-preview" class="file-preview" style="display:none;">
+              <span class="file-icon" id="preview-icon">📄</span>
+              <div class="file-info">
+                <div class="file-name" id="preview-name">file.pdf</div>
+                <div class="file-size" id="preview-size">0 KB</div>
               </div>
-
-              <!-- File Preview -->
-              <div id="file-preview" class="file-preview">
-                <div class="file-preview-icon" id="preview-icon">📄</div>
-                <div class="file-preview-info">
-                  <div class="file-preview-name" id="preview-name">filename.pdf</div>
-                  <div class="file-preview-size" id="preview-size">0 KB</div>
-                </div>
-                <button type="button" class="file-remove" onclick="removeFile()" aria-label="Remove file">✕</button>
-              </div>
+              <button type="button" class="file-remove" onclick="removeFile()" aria-label="Remove file">✕</button>
             </div>
           </div>
 
           <button type="submit" id="submit-btn" class="btn-submit" disabled>
-            <div class="spinner" aria-hidden="true"></div>
-            <span class="btn-text">Submit Application</span>
+            <span class="spinner" aria-hidden="true"></span>
+            <span class="btn-label">Submit Application</span>
           </button>
         </form>
       </div>
 
       <!-- Success View -->
-      <div id="success-view" class="success-panel">
-        <div class="success-icon" aria-hidden="true">✓</div>
+      <div id="success-view" style="display:none;" class="success-view">
+        <div class="success-check">✓</div>
         <h3 class="success-title">Application Submitted!</h3>
-        <p class="success-text">
-          Great news — your application has been received. Our AI hiring agent will review
-          your resume and reach out if you're shortlisted.
-        </p>
-        <div class="success-id" id="success-candidate-id" aria-label="Your application ID"></div>
-        <button class="btn-submit" onclick="closeModal()" style="margin-top:0;">
-          Browse More Jobs
-        </button>
+        <p class="success-body">Your application has been received. Our AI agent will review your resume and reach out if you're shortlisted.</p>
+        <div class="success-id" id="success-id"></div>
+        <button class="btn-submit" onclick="closeModal()">Back to Jobs</button>
       </div>
 
     </div>
   </div>
 
-  <!-- ── Toast ─────────────────────────────────────────────────── -->
+  <!-- ── Toast ───────────────────────────────────────────────── -->
   <div id="toast" class="toast" role="alert" aria-live="assertive">
-    <span class="toast-icon" id="toast-icon"></span>
     <span id="toast-msg"></span>
   </div>
 
-  <!-- ── Footer ────────────────────────────────────────────────── -->
+  <!-- ── Footer ──────────────────────────────────────────────── -->
   <footer class="footer">
     <div class="container">
       <p class="footer-text">
-        🤖 TalentHub is a <strong>Dummy Hiring Platform</strong> connected to the
-        <a href="http://localhost:5173" target="_blank" rel="noopener">AI Hiring Chatbot</a>.
-        Resumes are fetched by the AI agent at
-        <a href="http://localhost:8001/candidates" target="_blank" rel="noopener">/candidates</a>.
+        HireBoard is connected to the <a href="http://localhost:5173" target="_blank" rel="noopener">AI Hiring Chatbot</a>.
+        Jobs are published automatically when a recruiter approves a JD.
+        Agent fetches candidates at <a href="http://localhost:8001/candidates" target="_blank" rel="noopener">/candidates</a>.
       </p>
     </div>
   </footer>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>

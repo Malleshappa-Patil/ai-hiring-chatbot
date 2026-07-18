@@ -1,0 +1,22 @@
+{
+  "candidates": [
+    {
+      "id": "CAND-8B6849B8",
+      "name": "mhesh",
+      "email": "hello@gmail.com",
+      "phone": "9019192122",
+      "job_id": "job-52a10116",
+      "company_id": "company-001",
+      "applied_for": "Senior Python Developer",
+      "linkedin_url": "https://www.linkedin.com/in/malleshappa-d-patil-60719227a/",
+      "cover_note": "i have 3 years of experience in development field.",
+      "resume_filename": "CAND-8B6849B8.pdf",
+      "resume_url": "http://localhost:8001/resumes/CAND-8B6849B8.pdf",
+      "original_filename": "Malleshappa D Patil.pdf",
+      "file_size_kb": 197.7,
+      "applied_at": "2026-07-18T07:36:42.208936",
+      "status": "applied",
+      "source": "HireBoard"
+    }
+  ]
+}
