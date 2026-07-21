@@ -12,7 +12,8 @@ class LoginRequest(BaseModel):
 class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
-    full_name: str
+    full_name: Optional[str] = None
+    company_name: Optional[str] = None
     role: Literal["recruiter", "hiring_manager", "admin"] = "recruiter"
 
 

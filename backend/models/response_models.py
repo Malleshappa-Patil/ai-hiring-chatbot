@@ -15,6 +15,8 @@ class UserResponse(BaseModel):
     id: str
     email: str
     full_name: str
+    company_id: Optional[str] = None
+    company_name: Optional[str] = None
     role: str
     is_active: bool
     created_at: datetime
@@ -26,6 +28,7 @@ class UserResponse(BaseModel):
 # ── Jobs ─────────────────────────────────────────────────────────
 class JobResponse(BaseModel):
     id: str
+    company_id: Optional[str] = "company-001"
     title: str
     department: str
     location: str

@@ -27,6 +27,8 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    company_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="company-001")
+    company_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, default="TechCorp Inc.")
     role: Mapped[str] = mapped_column(SAEnum("recruiter", "hiring_manager", "admin", name="user_role"), default="recruiter")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -41,6 +43,7 @@ class Job(Base):
     __tablename__ = "jobs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=gen_uuid)
+    company_id: Mapped[str] = mapped_column(String(50), default="company-001")
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     department: Mapped[str] = mapped_column(String(100), nullable=False)
     location: Mapped[str] = mapped_column(String(100), nullable=False)
