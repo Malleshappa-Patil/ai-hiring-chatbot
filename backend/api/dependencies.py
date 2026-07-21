@@ -11,6 +11,7 @@ from backend.database.models import User
 from backend.auth.jwt_handler import decode_token
 
 bearer_scheme = HTTPBearer()
+optional_bearer_scheme = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(
@@ -27,6 +28,20 @@ async def get_current_user(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
     return user
+
+
+async def get_optional_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> Optional[User]:
+    if not credentials:
+        return None
+    payload = decode_token(credentials.credentials)
+    if not payload:
+        return None
+    user_id = payload.get("sub")
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalar_one_or_none()
 
 
 def require_role(*roles: str):

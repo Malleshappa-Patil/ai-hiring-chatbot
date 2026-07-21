@@ -18,32 +18,41 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/candidates")
 
 
-# ── Public: Receive Application from HireBoard ────────────────────
+# -- Public: Receive Application from HireBoard -------------------------------------
 @router.post("/from-hireboard", status_code=201)
 async def receive_hireboard_application(
     db: AsyncSession = Depends(get_db),
-    # JSON body fields
-    name:         str = Query(...),
-    email:        str = Query(...),
-    phone:        Optional[str] = Query(None),
-    job_id:       str = Query(...),          # main backend job UUID
-    linkedin_url: Optional[str] = Query(None),
-    cover_note:   Optional[str] = Query(None),
-    source:       Optional[str] = Query("HireBoard"),
+    name:             str = Query(...),
+    email:            str = Query(...),
+    phone:            Optional[str] = Query(None),
+    job_id:           str = Query(...),            # main backend job UUID
+    linkedin_url:     Optional[str] = Query(None),
+    cover_note:       Optional[str] = Query(None),
+    source:           Optional[str] = Query("HireBoard"),
+    resume_file_path: Optional[str] = Query(None),  # absolute path on local disk
+    resume_url:       Optional[str] = Query(None),  # public URL for the resume
 ):
     """
     Called by HireBoard when a candidate submits an application.
-    Creates a Candidate record in the main DB so recruiters can see
-    the applicant immediately in the Candidates panel.
-    No authentication required — called server-to-server.
+    Creates a Candidate record, then triggers async CV screening via Gemini.
+    No authentication required - called server-to-server.
     """
+    import asyncio
     from backend.database.models import Job
+    from backend.services.cv_screening_service import run_screening_for_candidate
 
     # Verify job exists
     job_result = await db.execute(select(Job).where(Job.id == job_id))
     job = job_result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail=f"Job {job_id} not found in main platform")
+
+    # Block if job is already not_hiring
+    if job.status == "not_hiring":
+        return {
+            "message": "This position is no longer accepting applications.",
+            "seats_full": True,
+        }
 
     # Prevent duplicate applications (same email + job)
     existing = await db.execute(
@@ -60,18 +69,27 @@ async def receive_hireboard_application(
         phone=phone,
         job_id=job_id,
         status="applied",
-        resume_url=None,    # Resume file lives on HireBoard; URL set below
+        resume_url=resume_url,
     )
     db.add(candidate)
     await db.commit()
     await db.refresh(candidate)
 
     logger.info(
-        f"[HireBoard] New applicant: {name} ({email}) → job {job_id} "
+        f"[HireBoard] New applicant: {name} ({email}) -> job {job_id} "
         f"[candidate_id={candidate.id}]"
     )
+
+    # Trigger CV screening asynchronously - does NOT block the response
+    asyncio.create_task(
+        run_screening_for_candidate(
+            candidate_id=candidate.id,
+            resume_file_path=resume_file_path,
+        )
+    )
+
     return {
-        "message":      "Candidate created",
+        "message":      "Application received. CV screening in progress.",
         "candidate_id": candidate.id,
         "job_id":       job_id,
     }
@@ -326,3 +344,89 @@ async def delete_all_candidates(
         await db.rollback()
         logger.error(f"Purge failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# -- Post-Interview: Select Candidate -----------------------------------------
+@router.post("/{candidate_id}/select", status_code=200)
+async def select_candidate(
+    candidate_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Recruiter selects a candidate after the interview.
+    Updates status to 'selected' and sends congratulations email.
+    """
+    from backend.database.models import Job
+    from backend.services.notification_service import email_service
+
+    result = await db.execute(
+        select(Candidate).where(Candidate.id == candidate_id)
+    )
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    # Load job title
+    job_result = await db.execute(select(Job).where(Job.id == candidate.job_id))
+    job = job_result.scalar_one_or_none()
+    job_title = job.title if job else "the position"
+
+    candidate.status = "selected"
+    await db.commit()
+
+    # Send congratulations email
+    await email_service.send_selection_email(
+        candidate_email=candidate.email,
+        candidate_name=candidate.name,
+        job_title=job_title,
+    )
+
+    logger.info(f"Candidate {candidate.name} selected by {current_user.email}")
+    return {
+        "message":      f"{candidate.name} has been selected and notified via email.",
+        "candidate_id": candidate_id,
+        "status":       "selected",
+    }
+
+
+# -- Post-Interview: Final Reject Candidate ------------------------------------
+@router.post("/{candidate_id}/reject-final", status_code=200)
+async def reject_candidate_final(
+    candidate_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Recruiter rejects a candidate after the interview.
+    Updates status to 'rejected' and sends a warm rejection email.
+    """
+    from backend.database.models import Job
+    from backend.services.notification_service import email_service
+
+    result = await db.execute(
+        select(Candidate).where(Candidate.id == candidate_id)
+    )
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    job_result = await db.execute(select(Job).where(Job.id == candidate.job_id))
+    job = job_result.scalar_one_or_none()
+    job_title = job.title if job else "the position"
+
+    candidate.status = "rejected"
+    await db.commit()
+
+    await email_service.send_candidate_rejection(
+        candidate_email=candidate.email,
+        candidate_name=candidate.name,
+        job_title=job_title,
+    )
+
+    logger.info(f"Candidate {candidate.name} final-rejected by {current_user.email}")
+    return {
+        "message":      f"{candidate.name} has been rejected and notified via email.",
+        "candidate_id": candidate_id,
+        "status":       "rejected",
+    }

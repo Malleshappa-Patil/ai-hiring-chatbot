@@ -37,18 +37,33 @@ async def list_jobs_public(
     )
     jobs = result.scalars().all()
 
+    PASSED_STATUSES = ["shortlisted", "interview_scheduled", "interviewed", "selected", "onboarding"]
     items = []
     for j in jobs:
+        seat_limit = j.target_candidate_count or 1
+        filled_res = await db.execute(
+            select(func.count())
+            .select_from(Candidate)
+            .where(Candidate.job_id == j.id)
+            .where(Candidate.status.in_(PASSED_STATUSES))
+        )
+        filled = filled_res.scalar() or 0
+        is_full = filled >= seat_limit or j.status == "not_hiring"
+        effective_status = "not_hiring" if is_full else j.status
+
         items.append({
-            "id":               j.id,
-            "title":            j.title,
-            "department":       j.department,
-            "location":         j.location,
-            "job_type":         j.job_type,
-            "experience_level": j.experience_level,
-            "hiring_goal":      j.hiring_goal,
-            "status":           j.status,
-            "created_at":       j.created_at.isoformat() if j.created_at else None,
+            "id":                     j.id,
+            "title":                  j.title,
+            "department":             j.department,
+            "location":               j.location,
+            "job_type":               j.job_type,
+            "experience_level":       j.experience_level,
+            "hiring_goal":            j.hiring_goal,
+            "target_candidate_count": seat_limit,
+            "filled_count":           filled,
+            "is_full":                is_full,
+            "status":                 effective_status,
+            "created_at":             j.created_at.isoformat() if j.created_at else None,
         })
 
     return {
@@ -387,3 +402,39 @@ async def delete_job(
     return None
 
 
+# ── Seat Status (Public) ──────────────────────────────────────────
+@router.get("/{job_id}/seat-status")
+async def get_seat_status(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public endpoint — returns how many positions are filled vs total.
+    HireBoard uses this to show 'Applications Closed' when seats are full.
+    No authentication required.
+    """
+    PASSED_STATUSES = ["shortlisted", "interview_scheduled", "interviewed", "selected", "onboarding"]
+
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    seat_limit = job.target_candidate_count or 5
+
+    filled_result = await db.execute(
+        select(func.count())
+        .select_from(Candidate)
+        .where(Candidate.job_id == job_id)
+        .where(Candidate.status.in_(PASSED_STATUSES))
+    )
+    filled = filled_result.scalar() or 0
+
+    return {
+        "job_id":    job_id,
+        "job_title": job.title,
+        "filled":    filled,
+        "total":     seat_limit,
+        "is_full":   filled >= seat_limit or job.status == "not_hiring",
+        "job_status": job.status,
+    }

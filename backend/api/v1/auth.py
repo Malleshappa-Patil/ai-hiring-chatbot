@@ -16,19 +16,51 @@ router = APIRouter(prefix="/auth")
 
 @router.post("/register", response_model=UserResponse, status_code=201)
 async def register(payload: RegisterRequest, db: AsyncSession = Depends(get_db)):
+    import re
     # Check existing user
     result = await db.execute(select(User).where(User.email == payload.email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=400, detail="Email already registered")
+
+    c_name = (payload.company_name or "").strip() or "TechCorp Inc."
+    slug = re.sub(r'[^a-z0-9]+', '-', c_name.lower()).strip('-')
+    c_id = f"company-{slug[:30]}" if slug else "company-001"
+
     user = User(
         email=payload.email,
         hashed_password=hash_password(payload.password),
-        full_name=payload.full_name,
+        full_name=payload.full_name or c_name or "Company Recruiter",
+        company_id=c_id,
+        company_name=c_name,
         role=payload.role,
     )
     db.add(user)
     await db.commit()
     await db.refresh(user)
+
+    # Sync new company profile to HireBoard (localhost:8001)
+    try:
+        import urllib.request as _urllib_req
+        import json as _json
+        co_payload = _json.dumps({
+            "id": c_id,
+            "name": c_name,
+            "tagline": f"Welcome to {c_name}",
+            "industry": "Technology",
+            "location": "Bangalore / Remote",
+            "team_size": "10-100",
+        }).encode("utf-8")
+        req = _urllib_req.Request(
+            "http://localhost:8001/companies",
+            data=co_payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with _urllib_req.urlopen(req, timeout=3) as resp:
+            pass
+    except Exception as e:
+        print(f"[Auth] Could not sync company to HireBoard: {e}")
+
     return user
 
 
@@ -41,7 +73,12 @@ async def login(payload: LoginRequest, db: AsyncSession = Depends(get_db)):
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Account disabled")
     return {
-        "access_token": create_access_token({"sub": user.id, "role": user.role}),
+        "access_token": create_access_token({
+            "sub": user.id,
+            "role": user.role,
+            "company_id": user.company_id or "company-001",
+            "company_name": user.company_name or "TechCorp Inc.",
+        }),
         "refresh_token": create_refresh_token({"sub": user.id}),
         "token_type": "bearer",
     }
@@ -57,7 +94,12 @@ async def refresh(refresh_token: str, db: AsyncSession = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
     return {
-        "access_token": create_access_token({"sub": user.id, "role": user.role}),
+        "access_token": create_access_token({
+            "sub": user.id,
+            "role": user.role,
+            "company_id": user.company_id or "company-001",
+            "company_name": user.company_name or "TechCorp Inc.",
+        }),
         "refresh_token": create_refresh_token({"sub": user.id}),
         "token_type": "bearer",
     }

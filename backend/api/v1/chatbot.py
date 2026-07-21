@@ -15,12 +15,14 @@ import json
 import re
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from backend.config import settings
+from backend.database.models import User
+from backend.api.dependencies import get_optional_current_user
 
 router = APIRouter(prefix="/chatbot", tags=["AI Chatbot"])
 
@@ -485,15 +487,22 @@ async def _trigger_hiring_workflow(session: dict) -> str:
         job_type_val = _job_type_map.get(raw_job_type, "full_time")
 
         async with AsyncSessionLocal() as db:
-            # Use the first active user as creator (chatbot has no auth context)
-            user_result = await db.execute(
-                _select(User).where(User.is_active == True).limit(1)
-            )
-            first_user = user_result.scalar_one_or_none()
-            creator_id = first_user.id if first_user else "chatbot"
+            # Use creator from session or active user
+            user_id_val = session.get("user_id")
+            if user_id_val:
+                creator_id = user_id_val
+            else:
+                user_result = await db.execute(
+                    _select(User).where(User.is_active == True).limit(1)
+                )
+                first_user = user_result.scalar_one_or_none()
+                creator_id = first_user.id if first_user else "chatbot"
+
+            company_id_val = session.get("company_id") or "company-001"
 
             job = Job(
                 title=job_title,
+                company_id=company_id_val,
                 department=str(hr.get("department", "General")),
                 location=str(hr.get("location", "Not specified")),
                 job_type=job_type_val,
@@ -532,16 +541,18 @@ async def _trigger_hiring_workflow(session: dict) -> str:
             skills_list = [s.strip() for s in skills_list.split(",") if s.strip()]
 
         hireboard_job = {
-            "title":      job_title,
-            "department": str(hr.get("department", "Engineering")),
-            "location":   str(hr.get("location", "Remote")),
-            "experience": str(hr.get("experience_years", "Not specified")),
-            "salary":     str(hr.get("budget", "Competitive")),
-            "skills":     skills_list,
-            "description": session.get("jd_content", "")[:500] if session.get("jd_content") else "",
-            "status":     "open",
-            # Use company_id from session if recruiter set it, else default company
-            "company_id": session.get("company_id", "company-001"),
+            "title":                  job_title,
+            "department":             str(hr.get("department", "Engineering")),
+            "location":               str(hr.get("location", "Remote")),
+            "experience":             str(hr.get("experience_years", "Not specified")),
+            "salary":                 str(hr.get("budget", "Competitive")),
+            "skills":                 skills_list,
+            "description":            session.get("jd_content", "")[:500] if session.get("jd_content") else "",
+            "status":                 "open",
+            "company_id":             session.get("company_id", "company-001"),
+            "target_candidate_count": int(hr.get("candidates_needed", 1)),
+            "openings":               int(hr.get("candidates_needed", 1)),
+            "main_backend_id":        session.get("db_job_id"),
         }
 
         payload_bytes = _json.dumps(hireboard_job).encode("utf-8")
@@ -563,12 +574,16 @@ async def _trigger_hiring_workflow(session: dict) -> str:
 # ── API Endpoints ──────────────────────────────────────────────────────────────
 
 @router.post("/start", response_model=StartSessionResponse)
-async def start_chatbot_session():
+async def start_chatbot_session(current_user: Optional[User] = Depends(get_optional_current_user)):
     """Start a new AI Hiring Chatbot session."""
     session_id = str(uuid.uuid4())
 
+    company_id = current_user.company_id if (current_user and current_user.company_id) else "company-001"
+    company_name = current_user.company_name if (current_user and current_user.company_name) else "TechCorp Inc."
+    user_id = current_user.id if current_user else None
+
     welcome_message = (
-        "👋 Hi there! I'm your **AI Hiring Assistant**.\n\n"
+        f"👋 Hi there! I'm your **AI Hiring Assistant** for **{company_name}**.\n\n"
         "To get started, tell me about the position you'd like to fill. "
         "Please include as many of these details as you can:\n\n"
         "- **Role** (e.g. Senior Python Developer)\n"
@@ -583,6 +598,9 @@ async def start_chatbot_session():
 
     _sessions[session_id] = {
         "session_id": session_id,
+        "company_id": company_id,
+        "company_name": company_name,
+        "user_id": user_id,
         "step": "collect_details",
         "hiring_request": {},
         "messages": [

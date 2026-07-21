@@ -59,11 +59,27 @@ async def schedule_interview(
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
+    # Load job title for context
+    from backend.database.models import Job
+    job_result = await db.execute(select(Job).where(Job.id == payload.job_id))
+    job = job_result.scalar_one_or_none()
+    job_title = job.title if job else f"Position #{payload.job_id}"
+
     # Parse scheduled_at
     try:
         scheduled_at = datetime.fromisoformat(payload.scheduled_at.replace("Z", "+00:00"))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid datetime format. Use ISO 8601.")
+
+    # Generate Google Meet link
+    from backend.services.google_meet_service import create_meeting
+    meeting_link = await create_meeting(
+        candidate_name=candidate.name,
+        job_title=job_title,
+        scheduled_at=scheduled_at,
+        duration_minutes=payload.duration_minutes,
+        interviewer=payload.interviewer,
+    )
 
     # Create interview record
     interview = Interview(
@@ -74,7 +90,7 @@ async def schedule_interview(
         interviewer=payload.interviewer,
         interview_type=payload.interview_type,
         status="scheduled",
-        meeting_link=f"https://meet.hiring-platform.com/interview/{payload.candidate_id}",  # Mock link
+        meeting_link=meeting_link,
     )
     db.add(interview)
 
@@ -87,7 +103,7 @@ async def schedule_interview(
     await email_service.send_interview_invitation(
         candidate_email=candidate.email,
         candidate_name=candidate.name,
-        job_title=f"Position #{payload.job_id}",
+        job_title=job_title,
         scheduled_at=scheduled_at.strftime("%B %d, %Y at %H:%M UTC"),
         interviewer=payload.interviewer,
         meeting_link=interview.meeting_link,
