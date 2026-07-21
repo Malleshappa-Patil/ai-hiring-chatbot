@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { candidatesApi, jobsApi } from '@/api'
-import { Users, Star, CheckCircle, XCircle, Search, Briefcase, Loader2, UserCheck, UserX, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { candidatesApi, interviewsApi, jobsApi } from '@/api'
+import { Users, Star, CheckCircle, XCircle, Search, Briefcase, Loader2, UserCheck, UserX, Clock, ChevronDown, ChevronUp, CalendarPlus, ThumbsUp, ThumbsDown } from 'lucide-react'
 import type { MatchCategory, JobStatus } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -70,6 +70,12 @@ export default function CandidateList() {
   const [search, setSearch] = useState('')
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'shortlisted' | 'rejected'>('all')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  // Interview modal state
+  const [interviewModal, setInterviewModal] = useState<{ candidateId: string; candidateName: string } | null>(null)
+  const [interviewDate, setInterviewDate] = useState('')
+  const [interviewTime, setInterviewTime] = useState('10:00')
+  const [interviewerName, setInterviewerName] = useState('')
+  const [interviewDuration, setInterviewDuration] = useState(60)
   const qc = useQueryClient()
 
   const { data: jobs } = useQuery({
@@ -94,7 +100,7 @@ export default function CandidateList() {
   const approveMutation = useMutation({
     mutationFn: (id: string) => candidatesApi.approve(id),
     onSuccess: () => {
-      toast.success('Candidate shortlisted successfully!')
+      toast.success('Candidate shortlisted!')
       qc.invalidateQueries({ queryKey: ['candidates-ranked', selectedJobId] })
       qc.invalidateQueries({ queryKey: ['jobs'] })
     },
@@ -115,6 +121,37 @@ export default function CandidateList() {
       const msg = err?.response?.data?.detail || 'Failed to reject candidate'
       toast.error(msg)
     }
+  })
+
+  const scheduleMutation = useMutation({
+    mutationFn: (payload: Parameters<typeof interviewsApi.schedule>[0]) => interviewsApi.schedule(payload),
+    onSuccess: (data) => {
+      toast.success(`Interview invite sent! Meet link: ${data.meeting_link}`)
+      setInterviewModal(null)
+      setInterviewDate(''); setInterviewTime('10:00'); setInterviewerName(''); setInterviewDuration(60)
+      qc.invalidateQueries({ queryKey: ['candidates-ranked', selectedJobId] })
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Failed to schedule interview')
+    }
+  })
+
+  const selectMutation = useMutation({
+    mutationFn: (id: string) => candidatesApi.select(id),
+    onSuccess: (_, id) => {
+      toast.success('Candidate selected! Offer email sent. 🎉')
+      qc.invalidateQueries({ queryKey: ['candidates-ranked', selectedJobId] })
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to select candidate')
+  })
+
+  const rejectFinalMutation = useMutation({
+    mutationFn: (id: string) => candidatesApi.rejectFinal(id),
+    onSuccess: () => {
+      toast.success('Candidate rejected. Rejection email sent.')
+      qc.invalidateQueries({ queryKey: ['candidates-ranked', selectedJobId] })
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to reject candidate')
   })
 
   const allCandidates = candidates ?? []
@@ -439,6 +476,8 @@ export default function CandidateList() {
                     const isPending = approveMutation.isPending || rejectMutation.isPending
                     const isExpanded = expandedId === c.id
                     const isPendingReview = c.status === 'applied' || c.status === 'screening'
+                    const isShortlisted = c.status === 'shortlisted'
+                    const isInterviewed = c.status === 'interviewed' || c.status === 'interview_scheduled'
                     return (
                       <div key={c.id} style={{
                         background: 'rgba(255,255,255,0.02)',
@@ -555,6 +594,66 @@ export default function CandidateList() {
                             </div>
                           )}
 
+                          {/* Send Interview Invite button for shortlisted candidates */}
+                          {isShortlisted && (
+                            <div style={{ flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                              <button
+                                title="Send Interview Invite"
+                                onClick={() => setInterviewModal({ candidateId: c.id, candidateName: c.name })}
+                                style={{
+                                  padding: '7px 12px', background: 'rgba(14,165,233,0.12)',
+                                  border: '1px solid rgba(14,165,233,0.3)',
+                                  borderRadius: '8px', color: '#0ea5e9', cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', gap: '6px',
+                                  fontSize: '12px', fontWeight: 600,
+                                }}
+                              >
+                                <CalendarPlus size={14} />
+                                Invite
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Select / Reject buttons for interviewed candidates */}
+                          {isInterviewed && (
+                            <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                              <button
+                                title="Select Candidate"
+                                disabled={selectMutation.isPending || rejectFinalMutation.isPending}
+                                onClick={() => selectMutation.mutate(c.id)}
+                                style={{
+                                  padding: '7px 12px', background: 'rgba(16,185,129,0.12)',
+                                  border: '1px solid rgba(16,185,129,0.3)',
+                                  borderRadius: '8px', color: '#10b981', cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', gap: '5px',
+                                  fontSize: '12px', fontWeight: 600,
+                                }}
+                              >
+                                {selectMutation.isPending && selectMutation.variables === c.id
+                                  ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                                  : <ThumbsUp size={13} />}
+                                Select
+                              </button>
+                              <button
+                                title="Reject Candidate"
+                                disabled={selectMutation.isPending || rejectFinalMutation.isPending}
+                                onClick={() => rejectFinalMutation.mutate(c.id)}
+                                style={{
+                                  padding: '7px 12px', background: 'rgba(239,68,68,0.1)',
+                                  border: '1px solid rgba(239,68,68,0.25)',
+                                  borderRadius: '8px', color: '#ef4444', cursor: 'pointer',
+                                  display: 'flex', alignItems: 'center', gap: '5px',
+                                  fontSize: '12px', fontWeight: 600,
+                                }}
+                              >
+                                {rejectFinalMutation.isPending && rejectFinalMutation.variables === c.id
+                                  ? <Loader2 size={13} style={{ animation: 'spin 1s linear infinite' }} />
+                                  : <ThumbsDown size={13} />}
+                                Reject
+                              </button>
+                            </div>
+                          )}
+
                           {/* Expand toggle */}
                           <div style={{ color: '#475569', flexShrink: 0 }}>
                             {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -611,6 +710,146 @@ export default function CandidateList() {
         </div>
       </div>
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-    </div>
-  )
+
+      {/* Interview Scheduling Modal */}
+    {interviewModal && (
+      <div
+        style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          zIndex: 1000, backdropFilter: 'blur(4px)',
+        }}
+        onClick={() => setInterviewModal(null)}
+      >
+        <div
+          style={{
+            background: '#0f1117', border: '1px solid rgba(255,255,255,0.1)',
+            borderRadius: '16px', padding: '28px', width: '440px', maxWidth: '95vw',
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          <h3 style={{ fontSize: '16px', fontWeight: 700, color: '#e2e8f0', marginBottom: '6px' }}>
+            Send Interview Invite
+          </h3>
+          <p style={{ fontSize: '13px', color: '#64748b', marginBottom: '20px' }}>
+            Scheduling for: <strong style={{ color: '#94a3b8' }}>{interviewModal.candidateName}</strong>
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            {/* Date */}
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '6px' }}>DATE</label>
+              <input
+                type="date"
+                value={interviewDate}
+                min={new Date().toISOString().split('T')[0]}
+                onChange={e => setInterviewDate(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px',
+                  color: '#e2e8f0', fontSize: '14px', outline: 'none', boxSizing: 'border-box',
+                  colorScheme: 'dark',
+                }}
+              />
+            </div>
+
+            {/* Time */}
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '6px' }}>TIME</label>
+              <input
+                type="time"
+                value={interviewTime}
+                onChange={e => setInterviewTime(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px',
+                  color: '#e2e8f0', fontSize: '14px', outline: 'none', boxSizing: 'border-box',
+                  colorScheme: 'dark',
+                }}
+              />
+            </div>
+
+            {/* Interviewer name */}
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '6px' }}>INTERVIEWER NAME</label>
+              <input
+                type="text"
+                placeholder="e.g. Rahul Sharma"
+                value={interviewerName}
+                onChange={e => setInterviewerName(e.target.value)}
+                style={{
+                  width: '100%', padding: '10px 12px', background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px',
+                  color: '#e2e8f0', fontSize: '14px', outline: 'none', boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            {/* Duration */}
+            <div>
+              <label style={{ fontSize: '12px', color: '#94a3b8', fontWeight: 600, display: 'block', marginBottom: '6px' }}>DURATION</label>
+              <select
+                value={interviewDuration}
+                onChange={e => setInterviewDuration(Number(e.target.value))}
+                style={{
+                  width: '100%', padding: '10px 12px', background: '#0f1117',
+                  border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px',
+                  color: '#e2e8f0', fontSize: '14px', outline: 'none', boxSizing: 'border-box',
+                }}
+              >
+                <option value={30}>30 minutes</option>
+                <option value={45}>45 minutes</option>
+                <option value={60}>60 minutes</option>
+                <option value={90}>90 minutes</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
+            <button
+              onClick={() => setInterviewModal(null)}
+              style={{
+                flex: 1, padding: '11px', background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px',
+                color: '#64748b', fontSize: '14px', cursor: 'pointer', fontWeight: 500,
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              disabled={!interviewDate || !interviewerName || scheduleMutation.isPending}
+              onClick={() => {
+                if (!interviewDate || !interviewerName) {
+                  toast.error('Please fill in date and interviewer name')
+                  return
+                }
+                const scheduledAt = new Date(`${interviewDate}T${interviewTime}:00`).toISOString()
+                scheduleMutation.mutate({
+                  candidate_id: interviewModal.candidateId,
+                  job_id: selectedJobId,
+                  scheduled_at: scheduledAt,
+                  duration_minutes: interviewDuration,
+                  interviewer: interviewerName,
+                  interview_type: 'technical',
+                })
+              }}
+              style={{
+                flex: 2, padding: '11px', background: '#0ea5e9',
+                border: 'none', borderRadius: '10px',
+                color: 'white', fontSize: '14px', cursor: (!interviewDate || !interviewerName) ? 'not-allowed' : 'pointer',
+                fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                opacity: (!interviewDate || !interviewerName) ? 0.5 : 1,
+              }}
+            >
+              {scheduleMutation.isPending
+                ? <><Loader2 size={15} style={{ animation: 'spin 1s linear infinite' }} /> Sending...</>
+                : <><CalendarPlus size={15} /> Send Invite & Meet Link</>
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+)
 }
