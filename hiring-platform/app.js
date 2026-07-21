@@ -163,13 +163,24 @@ function renderJobRow(job, index) {
   const icon   = icons[index % icons.length];
   const skills = (job.skills || []).slice(0, 5);
   const status = (job.status || 'open').toLowerCase();
+  const isClosed = status === 'not_hiring' || status === 'closed' || job.is_full === true;
+  const openingsCount = job.target_candidate_count || job.openings || 1;
+  const statusLabel = isClosed ? 'NOT HIRING' : status.replace('_', ' ');
 
   const skillsHtml = skills.map(s =>
     `<span class="skill-tag">${escHtml(s)}</span>`
   ).join('');
 
+  const applyBtn = isClosed
+    ? `<button class="btn-apply btn-apply--disabled" disabled aria-disabled="true" onclick="event.preventDefault(); return false;">Applications Closed</button>`
+    : `<button
+         class="btn-apply"
+         onclick="openModal('${escAttr(job.id)}')"
+         aria-label="Apply for ${escAttr(job.title)}"
+       >Apply Now</button>`;
+
   return `
-    <div class="job-card" id="job-card-${escHtml(job.id)}">
+    <div class="job-card${isClosed ? ' job-card--closed' : ''}" id="job-card-${escHtml(job.id)}">
       <div class="job-icon" aria-hidden="true">${icon}</div>
 
       <div class="job-main">
@@ -178,18 +189,16 @@ function renderJobRow(job, index) {
           <span class="chip"><span class="chip-icon">📍</span>${escHtml(job.location || 'Remote')}</span>
           <span class="chip"><span class="chip-icon">⏱</span>${escHtml(job.experience || 'Any')}</span>
           <span class="chip"><span class="chip-icon">🏢</span>${escHtml(job.department || 'Engineering')}</span>
+          <span class="chip chip-openings"><span class="chip-icon">🎯</span>${openingsCount} ${openingsCount === 1 ? 'Opening' : 'Openings'}</span>
         </div>
         ${skillsHtml ? `<div class="skill-tags">${skillsHtml}</div>` : ''}
+        ${isClosed ? `<div class="job-closed-notice">🚫 We are currently not accepting new applications for this role.</div>` : ''}
       </div>
 
       <div class="job-right">
         <span class="job-salary">${escHtml(job.salary || 'Competitive')}</span>
-        <span class="status-badge">${escHtml(status)}</span>
-        <button
-          class="btn-apply"
-          onclick="openModal('${escAttr(job.id)}')"
-          aria-label="Apply for ${escAttr(job.title)}"
-        >Apply Now</button>
+        <span class="status-badge${isClosed ? ' status-badge--closed' : ''}">${escHtml(statusLabel)}</span>
+        ${applyBtn}
       </div>
     </div>`;
 }
@@ -342,7 +351,27 @@ async function saveCompany() {
 }
 
 // ── Apply Modal ───────────────────────────────────────────────────────────────
-function openModal(jobId) {
+async function openModal(jobId) {
+  const job = jobId ? jobs.find(j => j.id === jobId) || null : jobs[0] || null;
+
+  // Quick seat-status pre-check for main-backend jobs
+  if (job && job.main_backend_id) {
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/jobs/${job.main_backend_id}/seat-status`);
+      if (res.ok) {
+        const s = await res.json();
+        if (s.is_full) {
+          job.status = 'not_hiring';
+          const idx = jobs.findIndex(j => j.id === job.id);
+          if (idx !== -1) jobs[idx].status = 'not_hiring';
+          renderAll();
+          showToast('error', 'Applications for this role are currently closed.');
+          return;
+        }
+      }
+    } catch (_) { /* ignore - let server handle it */ }
+  }
+
   const modal       = document.getElementById('apply-modal');
   const formView    = document.getElementById('form-view');
   const successView = document.getElementById('success-view');
@@ -352,11 +381,12 @@ function openModal(jobId) {
   document.getElementById('apply-form').reset();
   removeFile();
 
-  selectedJob = jobId ? jobs.find(j => j.id === jobId) || null : jobs[0] || null;
+  selectedJob = job;
 
   if (selectedJob) {
+    const count = selectedJob.target_candidate_count || selectedJob.openings || 1;
     document.getElementById('modal-job-label').textContent =
-      `${selectedJob.title} — ${selectedJob.location || ''}`;
+      `${selectedJob.title} — ${selectedJob.location || ''} (${count} ${count === 1 ? 'Opening' : 'Openings'})`;
     document.getElementById('field-job-id').value    = selectedJob.id;
     document.getElementById('field-job-title').value = selectedJob.title;
     document.getElementById('field-company-id').value = selectedJob.company_id || '';
@@ -473,6 +503,20 @@ async function submitApplication() {
     fd.append('resume',       selectedFile);
 
     const res = await fetch(`${API_BASE}/apply`, { method: 'POST', body: fd });
+
+    // Seats full - mark job as closed and close modal
+    if (res.status === 409) {
+      const err = await res.json().catch(() => ({}));
+      showToast('error', err.detail || 'Applications for this role are now closed.');
+      if (selectedJob) {
+        selectedJob.status = 'not_hiring';
+        const idx = jobs.findIndex(j => j.id === selectedJob.id);
+        if (idx !== -1) jobs[idx].status = 'not_hiring';
+        renderAll();
+      }
+      closeModal();
+      return;
+    }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));

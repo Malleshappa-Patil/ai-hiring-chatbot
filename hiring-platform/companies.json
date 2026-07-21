@@ -1,24 +1,14 @@
 {
   "companies": [
     {
-      "id": "company-001",
-      "name": "TechCorp Inc.",
+      "id": "company-hello-world",
+      "name": "Hello World",
       "tagline": "Building the future, one hire at a time",
       "industry": "Technology",
-      "location": "Bangalore, India",
-      "team_size": "50–200",
+      "location": "Bangalore / Remote",
+      "team_size": "10–100",
       "website": "",
-      "created_at": "2026-07-17T18:04:00.411986"
-    },
-    {
-      "name": "sdfdds",
-      "tagline": "fsf",
-      "industry": "sff",
-      "location": "sds",
-      "team_size": "12",
-      "website": "sdsd",
-      "id": "company-69a79274",
-      "created_at": "2026-07-17T18:08:38.678610"
+      "created_at": "2026-07-21T13:01:55.783003"
     }
   ]
 }

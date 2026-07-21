@@ -99,12 +99,12 @@ def _resolve_main_backend_job_id(hireboard_job_id: str) -> str | None:
 # ── Default data ──────────────────────────────────────────────────────────────
 
 DEFAULT_COMPANY = {
-    "id": "company-001",
-    "name": "TechCorp Inc.",
+    "id": "company-hello-world",
+    "name": "Hello World",
     "tagline": "Building the future, one hire at a time",
     "industry": "Technology",
-    "location": "Bangalore, India",
-    "team_size": "50–200",
+    "location": "Bangalore / Remote",
+    "team_size": "10–100",
     "website": "",
     "created_at": datetime.utcnow().isoformat(),
 }
@@ -122,6 +122,8 @@ DEFAULT_JOBS = [
         "description": "Build scalable backend systems for our AI-powered recruitment platform.",
         "posted_at": datetime.utcnow().isoformat(),
         "status": "open",
+        "target_candidate_count": 3,
+        "openings": 3,
     },
     {
         "id": "job-002",
@@ -135,6 +137,8 @@ DEFAULT_JOBS = [
         "description": "Craft performant user interfaces for our recruitment dashboard.",
         "posted_at": datetime.utcnow().isoformat(),
         "status": "open",
+        "target_candidate_count": 2,
+        "openings": 2,
     },
 ]
 
@@ -193,6 +197,18 @@ async def update_company(company_id: str, updates: dict):
     raise HTTPException(status_code=404, detail=f"Company {company_id} not found")
 
 
+@app.delete("/companies/{company_id}")
+async def delete_company(company_id: str):
+    """Delete a company."""
+    data = _load_json(COMPANIES_FILE, {"companies": [DEFAULT_COMPANY]})
+    companies = data.get("companies", [])
+    new_cos = [c for c in companies if c.get("id") != company_id]
+    if len(new_cos) == len(companies):
+        raise HTTPException(status_code=404, detail=f"Company {company_id} not found")
+    _save_json(COMPANIES_FILE, {"companies": new_cos})
+    return {"message": f"Company {company_id} removed"}
+
+
 # ── REST API — Jobs ───────────────────────────────────────────────────────────
 
 @app.get("/jobs")
@@ -223,25 +239,34 @@ async def list_jobs(company_id: Optional[str] = None):
         print(f"[Platform] ⚠️  Could not reach main backend: {e}")
 
     # ── 3. Normalise main-backend jobs into HireBoard format ──────
-    local_main_ids = {j.get("main_backend_id") for j in local_jobs if j.get("main_backend_id")}
+    local_main_map = {j.get("main_backend_id"): i for i, j in enumerate(local_jobs) if j.get("main_backend_id")}
     for mj in main_jobs:
         mid = mj.get("id", "")
-        if mid in local_main_ids:
-            continue  # already synced earlier — skip duplicate
+        if mid in local_main_map:
+            idx = local_main_map[mid]
+            local_jobs[idx]["status"] = mj.get("status", local_jobs[idx].get("status", "open"))
+            local_jobs[idx]["is_full"] = mj.get("is_full", False)
+            if mj.get("is_full"):
+                local_jobs[idx]["status"] = "not_hiring"
+            continue
+
         hb_job = {
-            "id":             f"mb-{mid[:8]}",
-            "main_backend_id": mid,
-            "company_id":     "company-001",
-            "title":          mj.get("title", "Untitled"),
-            "department":     mj.get("department", ""),
-            "location":       mj.get("location", "Remote"),
-            "experience":     mj.get("experience_level", ""),
-            "salary":         "Competitive",
-            "skills":         [],
-            "description":    mj.get("hiring_goal", ""),
-            "status":         "open",
-            "posted_at":      mj.get("created_at", datetime.utcnow().isoformat()),
-            "source":         "main_backend",
+            "id":                     f"mb-{mid[:8]}",
+            "main_backend_id":        mid,
+            "company_id":             mj.get("company_id") or "company-hello-world",
+            "title":                  mj.get("title", "Untitled"),
+            "department":             mj.get("department", ""),
+            "location":               mj.get("location", "Remote"),
+            "experience":             mj.get("experience_level", ""),
+            "salary":                 "Competitive",
+            "skills":                 [],
+            "description":            mj.get("hiring_goal", ""),
+            "target_candidate_count": mj.get("target_candidate_count", 1),
+            "openings":               mj.get("target_candidate_count", 1),
+            "is_full":                mj.get("is_full", False),
+            "status":                 mj.get("status", "open"),
+            "posted_at":              mj.get("created_at", datetime.utcnow().isoformat()),
+            "source":                 "main_backend",
         }
         local_jobs.append(hb_job)
 
@@ -258,6 +283,7 @@ async def create_job(job: dict):
     Add a new job listing.
     Called by the AI chatbot workflow when a JD is approved.
     If no company_id is provided, defaults to company-001.
+    Auto-creates the company section in companies.json if missing.
     """
     jobs = _load_json(JOBS_FILE, [])
     if isinstance(jobs, dict):
@@ -265,8 +291,27 @@ async def create_job(job: dict):
     job.setdefault("id", f"job-{uuid.uuid4().hex[:8]}")
     job.setdefault("posted_at", datetime.utcnow().isoformat())
     job.setdefault("status", "open")
-    # Default to first company if not specified
     job.setdefault("company_id", "company-001")
+
+    # Ensure company exists in companies.json so an accordion section renders
+    co_id = job["company_id"]
+    co_data = _load_json(COMPANIES_FILE, {"companies": [DEFAULT_COMPANY]})
+    cos = co_data.get("companies", [])
+    if not any(c.get("id") == co_id for c in cos):
+        c_name = co_id.replace("company-", "").replace("-", " ").title()
+        new_co = {
+            "id": co_id,
+            "name": c_name,
+            "tagline": f"Building great teams at {c_name}",
+            "industry": "Technology",
+            "location": job.get("location", "Remote"),
+            "team_size": "10-100",
+            "created_at": datetime.utcnow().isoformat(),
+        }
+        cos.append(new_co)
+        _save_json(COMPANIES_FILE, {"companies": cos})
+        print(f"[Platform] ✅ Auto-created company: {c_name} [{co_id}]")
+
     jobs.append(job)
     _save_json(JOBS_FILE, jobs)
     print(f"[Platform] ✅ Job created: {job.get('title')} [{job['id']}] → company: {job['company_id']}")
@@ -307,7 +352,8 @@ async def apply_for_job(
 ):
     """
     Accept a job application with resume upload.
-    Stores the resume file and candidate metadata.
+    Stores the resume file, checks seat limit, then syncs to main backend
+    which will trigger async CV screening via Gemini.
     """
     allowed_exts = {".pdf", ".doc", ".docx"}
     file_ext = Path(resume.filename).suffix.lower()
@@ -318,12 +364,34 @@ async def apply_for_job(
             detail=f"Only PDF and Word documents are accepted. Got: {file_ext}",
         )
 
+    # -- Check seat limit BEFORE accepting the file upload --
+    main_job_id = _resolve_main_backend_job_id(job_id)
+    if main_job_id:
+        try:
+            req = _urllib_req.Request(
+                f"http://localhost:8000/api/v1/jobs/{main_job_id}/seat-status",
+                headers={"Accept": "application/json"},
+            )
+            with _urllib_req.urlopen(req, timeout=3) as resp:
+                seat_data = json.loads(resp.read().decode())
+                if seat_data.get("is_full"):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="We are not accepting applications for this role at the moment.",
+                    )
+        except HTTPException:
+            raise
+        except Exception as e:
+            print(f"[Platform] ⚠️  Could not check seat status: {e}")
+
     candidate_id  = f"CAND-{uuid.uuid4().hex[:8].upper()}"
     safe_filename = f"{candidate_id}{file_ext}"
     file_path     = UPLOADS_DIR / safe_filename
 
     content = await resume.read()
     file_path.write_bytes(content)
+
+    resume_url = f"http://localhost:8001/resumes/{safe_filename}"
 
     candidate = {
         "id":                candidate_id,
@@ -336,7 +404,7 @@ async def apply_for_job(
         "linkedin_url":      linkedin_url,
         "cover_note":        cover_note,
         "resume_filename":   safe_filename,
-        "resume_url":        f"http://localhost:8001/resumes/{safe_filename}",
+        "resume_url":        resume_url,
         "original_filename": resume.filename,
         "file_size_kb":      round(len(content) / 1024, 1),
         "applied_at":        datetime.utcnow().isoformat(),
@@ -348,39 +416,48 @@ async def apply_for_job(
     candidates["candidates"].append(candidate)
     _save_json(CANDIDATES_FILE, candidates)
 
-    print(f"[Platform] ✅ New application: {name} ({email}) → {job_title} [{candidate_id}]")
+    print(f"[Platform] New application: {name} ({email}) -> {job_title} [{candidate_id}]")
 
-    # ── Also push to main backend so recruiter sees candidate ───────
-    main_job_id = _resolve_main_backend_job_id(job_id)
+    # -- Push to main backend so recruiter sees candidate + CV screening triggers --
     if main_job_id:
         try:
             params = urllib.parse.urlencode({
-                "name":         name,
-                "email":        email,
-                "phone":        phone,
-                "job_id":       main_job_id,
-                "linkedin_url": linkedin_url,
-                "cover_note":   cover_note,
-                "source":       "HireBoard",
+                "name":             name,
+                "email":            email,
+                "phone":            phone,
+                "job_id":           main_job_id,
+                "linkedin_url":     linkedin_url,
+                "cover_note":       cover_note,
+                "source":           "HireBoard",
+                "resume_file_path": str(file_path.resolve()),  # absolute path for CV parser
+                "resume_url":       resume_url,
             })
             req = _urllib_req.Request(
                 f"http://localhost:8000/api/v1/candidates/from-hireboard?{params}",
                 method="POST",
                 headers={"Content-Type": "application/json"},
             )
-            with _urllib_req.urlopen(req, timeout=3) as resp:
+            with _urllib_req.urlopen(req, timeout=5) as resp:
                 result = json.loads(resp.read().decode())
-                print(f"[Platform] ✅ Synced to main backend: candidate_id={result.get('candidate_id')}")
+                if result.get("seats_full"):
+                    raise HTTPException(
+                        status_code=409,
+                        detail="We are not accepting applications for this role at the moment.",
+                    )
+                print(f"[Platform] Synced to main backend: candidate_id={result.get('candidate_id')}")
+        except HTTPException:
+            raise
         except Exception as e:
-            print(f"[Platform] ⚠️  Could not sync to main backend: {e}")
+            print(f"[Platform] Could not sync to main backend: {e}")
     else:
-        print(f"[Platform] ℹ️  No main_backend_id for job {job_id} — local-only job")
+        print(f"[Platform] No main_backend_id for job {job_id} -- local-only job")
 
     return {
-        "message": "Application submitted successfully!",
+        "message": "Application submitted successfully! Our AI is reviewing your resume.",
         "candidate_id": candidate_id,
         "candidate": candidate,
     }
+
 
 
 @app.get("/candidates")
