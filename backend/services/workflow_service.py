@@ -398,185 +398,65 @@ class WorkflowService:
         self, workflow_id: str, job_id: str
     ) -> None:
         """
-        Background task to simulate the resume screening stage.
-        Generates candidate scores and ranks them, then advances to human_review.
+        Background task for the resume screening stage.
+        Only processes REAL candidates who applied via HireBoard.
+        No dummy/simulated candidates are ever created.
         """
         from backend.database.session import AsyncSessionLocal
         from backend.database.models import Candidate, CandidateScore
-        import random
 
         async with AsyncSessionLocal() as db:
             try:
-                await asyncio.sleep(6)  # Simulate screening time
+                await asyncio.sleep(6)  # Simulate AI screening time
 
-                # Fetch job details to get target_candidate_count
-                job_result = await db.execute(select(Job).where(Job.id == job_id))
-                job = job_result.scalar_one_or_none()
-                target_count = job.target_candidate_count if (job and job.target_candidate_count) else 3
+                # Fetch ONLY real candidates who already applied for this job
+                existing_result = await db.execute(
+                    select(Candidate).where(Candidate.job_id == job_id)
+                )
+                real_candidates = existing_result.scalars().all()
 
-                # Define a pool of candidates
-                candidate_pool = [
-                    {
-                        "name": "Amit Patel",
-                        "email": "amit.patel@example.com",
-                        "phone": "+91-9988776655",
-                        "score": 88.5,
-                        "category": "strong_match",
-                        "explanation": "Strong fit with required skills. Highly proficient in core backend systems, microservices design, and containerization.",
-                        "skills_matched": ["Python", "FastAPI", "Docker", "System Design"],
-                        "skills_missing": ["Kubernetes"],
-                    },
-                    {
-                        "name": "Neha Sen",
-                        "email": "neha.sen@example.com",
-                        "phone": "+91-9988776644",
-                        "score": 76.0,
-                        "category": "partial_match",
-                        "explanation": "Solid backend experience but lacks FastAPI experience. Good knowledge of Django and SQL databases.",
-                        "skills_matched": ["Python", "Django", "PostgreSQL"],
-                        "skills_missing": ["FastAPI", "Docker"],
-                    },
-                    {
-                        "name": "Vikram Malhotra",
-                        "email": "vikram.m@example.com",
-                        "phone": "+91-9988776633",
-                        "score": 45.0,
-                        "category": "weak_match",
-                        "explanation": "Primarily a frontend developer. Minimal backend experience in Python and missing most required cloud infrastructure skills.",
-                        "skills_matched": ["Python"],
-                        "skills_missing": ["FastAPI", "PostgreSQL", "Docker", "System Design"],
-                    },
-                    {
-                        "name": "Rohan Sharma",
-                        "email": "rohan.sharma@example.com",
-                        "phone": "+91-9988776622",
-                        "score": 92.0,
-                        "category": "strong_match",
-                        "explanation": "Excellent backend engineer with extensive experience in cloud technologies, scalable microservices, and distributed databases.",
-                        "skills_matched": ["Python", "FastAPI", "Docker", "Kubernetes", "PostgreSQL"],
-                        "skills_missing": ["NoSQL"],
-                    },
-                    {
-                        "name": "Pooja Patel",
-                        "email": "pooja.patel@example.com",
-                        "phone": "+91-9988776611",
-                        "score": 82.5,
-                        "category": "strong_match",
-                        "explanation": "Solid experience in Python and FastAPI web frameworks. Proficient in database query optimization and API security.",
-                        "skills_matched": ["Python", "FastAPI", "PostgreSQL", "System Design"],
-                        "skills_missing": ["Docker", "Kubernetes"],
-                    },
-                    {
-                        "name": "Kunal Kapoor",
-                        "email": "kunal.k@example.com",
-                        "phone": "+91-9988776600",
-                        "score": 68.0,
-                        "category": "partial_match",
-                        "explanation": "Good software engineer with Python scripting experience but needs training in web service development frameworks.",
-                        "skills_matched": ["Python", "PostgreSQL"],
-                        "skills_missing": ["FastAPI", "Docker", "System Design"],
-                    },
-                    {
-                        "name": "Aisha Iyer",
-                        "email": "aisha.iyer@example.com",
-                        "phone": "+91-9988776599",
-                        "score": 55.0,
-                        "category": "weak_match",
-                        "explanation": "Mainly worked as QA engineer. Knows basic Python programming but lacks product development experience.",
-                        "skills_matched": ["Python"],
-                        "skills_missing": ["FastAPI", "PostgreSQL", "Docker", "Kubernetes"],
-                    },
-                    {
-                        "name": "Siddharth Rao",
-                        "email": "siddharth.rao@example.com",
-                        "phone": "+91-9988776588",
-                        "score": 89.0,
-                        "category": "strong_match",
-                        "explanation": "Experienced system engineer. Strong understanding of backend architecture, database optimization, and high availability systems.",
-                        "skills_matched": ["Python", "FastAPI", "PostgreSQL", "Docker", "System Design"],
-                        "skills_missing": ["React"],
-                    },
-                    {
-                        "name": "Anjali Nair",
-                        "email": "anjali.nair@example.com",
-                        "phone": "+91-9988776577",
-                        "score": 74.0,
-                        "category": "partial_match",
-                        "explanation": "Full stack developer. Good React and frontend knowledge but backend knowledge in Python/FastAPI is intermediate.",
-                        "skills_matched": ["Python", "FastAPI", "PostgreSQL"],
-                        "skills_missing": ["Docker", "System Design"],
-                    },
-                    {
-                        "name": "Kabir Mehta",
-                        "email": "kabir.mehta@example.com",
-                        "phone": "+91-9988776566",
-                        "score": 38.0,
-                        "category": "weak_match",
-                        "explanation": "Junior candidate. Very limited professional experience. Academic projects in Python but needs core training.",
-                        "skills_matched": ["Python"],
-                        "skills_missing": ["FastAPI", "PostgreSQL", "Docker", "System Design"],
-                    }
-                ]
+                if not real_candidates:
+                    # No real applicants yet — just log and advance; do NOT create dummies
+                    await self._log_agent_action(
+                        db, workflow_id,
+                        agent_name="Resume Screening Agent",
+                        action="screen_resumes",
+                        input_summary=f"Job ID: {job_id}",
+                        output_summary="No applicants yet for this role. Waiting for candidates to apply via HireBoard.",
+                        latency_ms=500, token_usage=0,
+                    )
+                    await self.advance_stage(db, workflow_id, "human_review", {
+                        "screening": "completed", "human_review": "waiting_approval"
+                    })
+                    logger.info(f"Screening complete — 0 applicants for job {job_id}")
+                    return
 
-                # 1. Create candidates if they don't exist
-                cand_data = []
-                for i in range(target_count):
-                    pool_index = i % len(candidate_pool)
-                    candidate = {**candidate_pool[pool_index]}
-                    # If cycling, modify the email and name to make them unique
-                    if i >= len(candidate_pool):
-                        suffix = f"_{i // len(candidate_pool) + 1}"
-                        candidate["name"] = f"{candidate['name']}{suffix}"
-                        email_parts = candidate["email"].split("@")
-                        candidate["email"] = f"{email_parts[0]}{suffix}@{email_parts[1]}"
-                    cand_data.append(candidate)
+                # Mark existing candidates as 'screening' if they are still 'applied'
+                for candidate in real_candidates:
+                    if candidate.status == "applied":
+                        candidate.status = "screening"
+                await db.commit()
 
-                # Verify if candidates are already created for this job
-                existing_cands = await db.execute(select(Candidate).where(Candidate.job_id == job_id))
-                if not existing_cands.scalars().all():
-                    for c in cand_data:
-                        candidate = Candidate(
-                            name=c["name"],
-                            email=c["email"],
-                            phone=c["phone"],
-                            job_id=job_id,
-                            status="screening",
-                        )
-                        db.add(candidate)
-                        await db.flush()
-
-                        score = CandidateScore(
-                            candidate_id=candidate.id,
-                            job_id=job_id,
-                            score=c["score"],
-                            category=c["category"],
-                            explanation=c["explanation"],
-                            skills_matched=c["skills_matched"],
-                            skills_missing=c["skills_missing"],
-                        )
-                        db.add(score)
-                    await db.commit()
-
-                # Log agent action
-                strong_count = sum(1 for c in cand_data if c["category"] == "strong_match")
-                partial_count = sum(1 for c in cand_data if c["category"] == "partial_match")
-                weak_count = sum(1 for c in cand_data if c["category"] == "weak_match")
-                
+                # Log screening result
+                total = len(real_candidates)
                 await self._log_agent_action(
                     db, workflow_id,
                     agent_name="Resume Screening Agent",
                     action="screen_resumes",
-                    input_summary=f"{target_count} resumes submitted",
-                    output_summary=f"Screened {target_count} resumes: {strong_count} strong match, {partial_count} partial, {weak_count} weak. Ranks and scores generated.",
-                    latency_ms=4200, token_usage=1500,
+                    input_summary=f"{total} real applicant(s) submitted via HireBoard",
+                    output_summary=(
+                        f"Screening {total} applicant(s). "
+                        "Recruiter review is now available in the Candidates panel."
+                    ),
+                    latency_ms=4200, token_usage=800,
                 )
 
-                # Advance to human_review
+                # Advance to human_review so recruiter can approve/reject
                 await self.advance_stage(db, workflow_id, "human_review", {
                     "screening": "completed", "human_review": "waiting_approval"
                 })
 
-                logger.info(f"Screening simulation complete for job {job_id}")
+                logger.info(f"Screening complete for job {job_id} — {total} real candidate(s)")
             except Exception as e:
                 logger.error(f"Screening simulation failed for job {job_id}: {e}")
 

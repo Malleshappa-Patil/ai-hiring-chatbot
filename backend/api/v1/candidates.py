@@ -18,6 +18,65 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/candidates")
 
 
+# ── Public: Receive Application from HireBoard ────────────────────
+@router.post("/from-hireboard", status_code=201)
+async def receive_hireboard_application(
+    db: AsyncSession = Depends(get_db),
+    # JSON body fields
+    name:         str = Query(...),
+    email:        str = Query(...),
+    phone:        Optional[str] = Query(None),
+    job_id:       str = Query(...),          # main backend job UUID
+    linkedin_url: Optional[str] = Query(None),
+    cover_note:   Optional[str] = Query(None),
+    source:       Optional[str] = Query("HireBoard"),
+):
+    """
+    Called by HireBoard when a candidate submits an application.
+    Creates a Candidate record in the main DB so recruiters can see
+    the applicant immediately in the Candidates panel.
+    No authentication required — called server-to-server.
+    """
+    from backend.database.models import Job
+
+    # Verify job exists
+    job_result = await db.execute(select(Job).where(Job.id == job_id))
+    job = job_result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail=f"Job {job_id} not found in main platform")
+
+    # Prevent duplicate applications (same email + job)
+    existing = await db.execute(
+        select(Candidate)
+        .where(Candidate.email == email)
+        .where(Candidate.job_id == job_id)
+    )
+    if existing.scalar_one_or_none():
+        return {"message": "Candidate already applied", "duplicate": True}
+
+    candidate = Candidate(
+        name=name,
+        email=email,
+        phone=phone,
+        job_id=job_id,
+        status="applied",
+        resume_url=None,    # Resume file lives on HireBoard; URL set below
+    )
+    db.add(candidate)
+    await db.commit()
+    await db.refresh(candidate)
+
+    logger.info(
+        f"[HireBoard] New applicant: {name} ({email}) → job {job_id} "
+        f"[candidate_id={candidate.id}]"
+    )
+    return {
+        "message":      "Candidate created",
+        "candidate_id": candidate.id,
+        "job_id":       job_id,
+    }
+
+
 # ── List Candidates ────────────────────────────────────────────────
 @router.get("/", response_model=PaginatedResponse)
 async def list_candidates(
@@ -207,3 +266,63 @@ async def reject_candidate(
     logger.info(f"Candidate {candidate_id} rejected: {payload.reason}")
     return candidate
 
+
+# ── Delete Single Candidate ───────────────────────────────────────
+@router.delete("/{candidate_id}", status_code=204)
+async def delete_candidate(
+    candidate_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove a candidate and their score/resume records."""
+    from sqlalchemy import delete as sql_delete
+    from backend.database.models import CandidateScore, Resume
+
+    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    # Cascade-delete related records
+    await db.execute(sql_delete(CandidateScore).where(CandidateScore.candidate_id == candidate_id))
+    await db.execute(sql_delete(Resume).where(Resume.candidate_id == candidate_id))
+    await db.delete(candidate)
+    await db.commit()
+    logger.info(f"Candidate {candidate_id} deleted by {current_user.email}")
+
+
+# ── Admin: Delete ALL Candidates (cleanup tool) ───────────────────
+@router.delete("/admin/purge-all", status_code=200)
+async def delete_all_candidates(
+    confirm: str = "no",
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin-only: wipe ALL candidates. Requires confirm=yes query param.
+    Used to clear dummy/simulated data so only real applicants remain.
+    """
+    from sqlalchemy import delete as sql_delete, text
+    from backend.database.models import CandidateScore, Resume, Interview, OnboardingTask
+
+    if current_user.role not in ("admin", "recruiter"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    if confirm != "yes":
+        raise HTTPException(status_code=400, detail="Pass confirm=yes to delete all candidates")
+
+    try:
+        # Delete in FK dependency order
+        await db.execute(sql_delete(OnboardingTask))
+        await db.execute(sql_delete(Interview))
+        await db.execute(sql_delete(CandidateScore))
+        await db.execute(sql_delete(Resume))
+        result = await db.execute(sql_delete(Candidate))
+        await db.commit()
+
+        n = result.rowcount
+        logger.warning(f"ALL {n} candidates purged by {current_user.email}")
+        return {"deleted": n, "message": f"Deleted {n} candidate(s) from the database."}
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"Purge failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
