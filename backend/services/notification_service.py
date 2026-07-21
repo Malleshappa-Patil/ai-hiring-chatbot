@@ -167,23 +167,70 @@ HR Team
     async def send_candidate_rejection(
         self, candidate_email: str, candidate_name: str, job_title: str
     ) -> bool:
+        html = f"""
+<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+  <h2 style="color:#1a1a2e;">Update on Your Application — {job_title}</h2>
+  <p>Dear <strong>{candidate_name}</strong>,</p>
+  <p>Thank you for taking the time to apply for the <strong>{job_title}</strong> position
+  and for the effort you put into your application.</p>
+  <p>After careful consideration, we have decided to move forward with other candidates
+  whose qualifications more closely match our current requirements.
+  This was a genuinely difficult decision and in no way reflects your potential.</p>
+  <p>We were impressed by your background and encourage you to keep growing
+  and exploring new opportunities. The right role is out there, and we believe
+  you will find it. We will keep your profile on file and may reach out for
+  future openings that are a strong match for your skills.</p>
+  <p>We sincerely wish you every success in your career journey ahead.</p>
+  <p>Warm regards,<br/><strong>Hiring Team</strong><br/>AI Hiring Platform</p>
+</div>
+"""
         return await self.send(
             to=[candidate_email],
-            subject=f"Application Update — {job_title}",
-            body=f"""
-Dear {candidate_name},
+            subject=f"Update on Your Application — {job_title}",
+            body=(
+                f"Dear {candidate_name},\n\n"
+                f"Thank you for applying for the {job_title} position.\n\n"
+                "After careful consideration, we have decided to move forward with other candidates "
+                "whose qualifications more closely match our current requirements. "
+                "This was a difficult decision and does not reflect your potential.\n\n"
+                "We encourage you to keep growing. The right opportunity is just around the corner. "
+                "We will keep your profile on file for future openings.\n\n"
+                "We sincerely wish you every success in your career journey.\n\n"
+                "Warm regards,\nHiring Team\nAI Hiring Platform"
+            ),
+            html=html,
+        )
 
-Thank you for your interest in the {job_title} position.
-
-After careful consideration, we regret to inform you that we will not be
-moving forward with your application at this time.
-
-We appreciate the time you invested in our process and wish you all the best
-in your job search.
-
-Best regards,
-Hiring Team
-""",
+    async def send_selection_email(
+        self, candidate_email: str, candidate_name: str, job_title: str, company_name: str = "our company"
+    ) -> bool:
+        html = f"""
+<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+  <h2 style="color:#065f46;">Congratulations, {candidate_name}! 🎉</h2>
+  <p>Dear <strong>{candidate_name}</strong>,</p>
+  <p>We are absolutely thrilled to inform you that you have been
+  <strong>selected for the {job_title} role</strong> at {company_name}!</p>
+  <p>Your skills, experience, and the enthusiasm you demonstrated throughout
+  the process truly stood out. We are excited to have you join the team.</p>
+  <p>Our HR team will be reaching out to you shortly with the next steps,
+  including details about your offer letter, start date, and onboarding process.</p>
+  <p>In the meantime, please do not hesitate to reach out if you have any questions.</p>
+  <p>Welcome aboard — we cannot wait to work with you!</p>
+  <p>Best regards,<br/><strong>Hiring Team</strong><br/>AI Hiring Platform</p>
+</div>
+"""
+        return await self.send(
+            to=[candidate_email],
+            subject=f"Congratulations — You've been selected for {job_title}! 🎉",
+            body=(
+                f"Dear {candidate_name},\n\n"
+                f"We are thrilled to inform you that you have been selected for the {job_title} role!\n\n"
+                "Your skills and the enthusiasm you demonstrated throughout the process truly stood out. "
+                "Our HR team will reach out shortly with your offer letter and onboarding details.\n\n"
+                "Welcome aboard! We cannot wait to work with you.\n\n"
+                "Best regards,\nHiring Team\nAI Hiring Platform"
+            ),
+            html=html,
         )
 
 
