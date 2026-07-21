@@ -8,6 +8,10 @@ export const authApi = {
     });
     return res.data;
   },
+  register: async (payload: { email: string; password: string; full_name: string; company_name?: string; role?: string }) => {
+    const res = await apiClient.post('/auth/register', payload);
+    return res.data;
+  },
   me: async () => {
     const res = await apiClient.get('/auth/me');
     return res.data;

@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { authApi } from '@/api'
-import { Bot, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { Bot, Mail, Lock, Eye, EyeOff, Loader2, Building, User } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 export default function Login() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [isRegister, setIsRegister] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
+  const [companyName, setCompanyName] = useState('')
   const [showPwd, setShowPwd] = useState(false)
 
   const loginMutation = useMutation({
@@ -16,6 +20,7 @@ export default function Login() {
     onSuccess: (data) => {
       localStorage.setItem('access_token', data.access_token)
       localStorage.setItem('refresh_token', data.refresh_token)
+      queryClient.clear()
       toast.success('Welcome back!')
       navigate('/dashboard')
     },
@@ -24,11 +29,41 @@ export default function Login() {
     },
   })
 
+  const registerMutation = useMutation({
+    mutationFn: () => authApi.register({
+      email,
+      password,
+      full_name: companyName || 'Company Recruiter',
+      company_name: companyName || 'TechCorp Inc.',
+      role: 'recruiter',
+    }),
+    onSuccess: () => {
+      toast.success('Company registered! Signing in...')
+      loginMutation.mutate()
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.detail || 'Registration failed. Please try again.')
+    },
+  })
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !password) { toast.error('Please fill in all fields'); return }
-    loginMutation.mutate()
+    if (!email || !password) {
+      toast.error('Please fill in email and password')
+      return
+    }
+    if (isRegister) {
+      if (!companyName) {
+        toast.error('Please fill in your company name')
+        return
+      }
+      registerMutation.mutate()
+    } else {
+      loginMutation.mutate()
+    }
   }
+
+  const isPending = loginMutation.isPending || registerMutation.isPending
 
   return (
     <div style={{
@@ -49,29 +84,29 @@ export default function Login() {
         pointerEvents: 'none',
       }} />
 
-      {/* Login card */}
+      {/* Card */}
       <div style={{
         width: '100%',
-        maxWidth: '400px',
+        maxWidth: '420px',
         background: '#111111',
         border: '1px solid #1e1e1e',
         borderRadius: '14px',
-        padding: '40px',
+        padding: '36px',
         position: 'relative',
         zIndex: 1,
       }}>
         {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '32px' }}>
+        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
           <div style={{
             width: '52px', height: '52px', borderRadius: '12px',
             background: '#ffffff',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 16px',
+            margin: '0 auto 14px',
           }}>
             <Bot size={26} color="#0a0a0a" />
           </div>
           <h1 style={{
-            fontSize: '22px', fontWeight: 700, color: '#ffffff', marginBottom: '6px',
+            fontSize: '22px', fontWeight: 700, color: '#ffffff', marginBottom: '4px',
           }}>
             AI Hiring Platform
           </h1>
@@ -80,12 +115,72 @@ export default function Login() {
           </p>
         </div>
 
+        {/* Tab Switcher */}
+        <div style={{
+          display: 'flex', background: '#1a1a1a', padding: '4px',
+          borderRadius: '10px', marginBottom: '24px', border: '1px solid #2a2a2a',
+        }}>
+          <button
+            type="button"
+            onClick={() => setIsRegister(false)}
+            style={{
+              flex: 1, padding: '9px', borderRadius: '7px', border: 'none',
+              fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+              background: !isRegister ? '#262626' : 'transparent',
+              color: !isRegister ? '#ffffff' : '#666666',
+              transition: 'all 0.2s',
+            }}
+          >
+            Sign In
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsRegister(true)}
+            style={{
+              flex: 1, padding: '9px', borderRadius: '7px', border: 'none',
+              fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+              background: isRegister ? '#262626' : 'transparent',
+              color: isRegister ? '#ffffff' : '#666666',
+              transition: 'all 0.2s',
+            }}
+          >
+            Register Company
+          </button>
+        </div>
+
         {/* Form */}
         <form onSubmit={handleSubmit}>
+          {isRegister && (
+            <>
+              {/* Company Name */}
+              <div style={{ marginBottom: '14px' }}>
+                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#888888', marginBottom: '7px' }}>
+                  Company Name
+                </label>
+                <div style={{ position: 'relative' }}>
+                  <Building size={15} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: '#444444' }} />
+                  <input
+                    id="company_name"
+                    type="text"
+                    value={companyName}
+                    onChange={e => setCompanyName(e.target.value)}
+                    placeholder="Acme Corp Inc."
+                    style={{
+                      width: '100%', padding: '11px 13px 11px 38px',
+                      background: '#1a1a1a', border: '1px solid #2a2a2a',
+                      borderRadius: '8px', color: '#e8e8e8', fontSize: '14px',
+                      outline: 'none', boxSizing: 'border-box',
+                    }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Email */}
           <div style={{ marginBottom: '14px' }}>
             <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#888888', marginBottom: '7px' }}>
-              Email Address
+              Work Email Address
             </label>
             <div style={{ position: 'relative' }}>
               <Mail size={15} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: '#444444' }} />
@@ -99,11 +194,8 @@ export default function Login() {
                   width: '100%', padding: '11px 13px 11px 38px',
                   background: '#1a1a1a', border: '1px solid #2a2a2a',
                   borderRadius: '8px', color: '#e8e8e8', fontSize: '14px',
-                  outline: 'none', transition: 'border-color 0.2s',
-                  boxSizing: 'border-box',
+                  outline: 'none', boxSizing: 'border-box',
                 }}
-                onFocus={e => e.target.style.borderColor = '#555555'}
-                onBlur={e => e.target.style.borderColor = '#2a2a2a'}
               />
             </div>
           </div>
@@ -125,11 +217,8 @@ export default function Login() {
                   width: '100%', padding: '11px 40px 11px 38px',
                   background: '#1a1a1a', border: '1px solid #2a2a2a',
                   borderRadius: '8px', color: '#e8e8e8', fontSize: '14px',
-                  outline: 'none', transition: 'border-color 0.2s',
-                  boxSizing: 'border-box',
+                  outline: 'none', boxSizing: 'border-box',
                 }}
-                onFocus={e => e.target.style.borderColor = '#555555'}
-                onBlur={e => e.target.style.borderColor = '#2a2a2a'}
               />
               <button
                 type="button"
@@ -149,21 +238,21 @@ export default function Login() {
           <button
             id="login-submit-btn"
             type="submit"
-            disabled={loginMutation.isPending}
+            disabled={isPending}
             style={{
               width: '100%', padding: '12px',
-              background: loginMutation.isPending ? '#333333' : '#ffffff',
+              background: isPending ? '#333333' : '#ffffff',
               border: 'none', borderRadius: '8px',
-              color: loginMutation.isPending ? '#888888' : '#0a0a0a',
+              color: isPending ? '#888888' : '#0a0a0a',
               fontSize: '14px', fontWeight: 600,
-              cursor: loginMutation.isPending ? 'not-allowed' : 'pointer',
+              cursor: isPending ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
               transition: 'background 0.2s, color 0.2s',
             }}
           >
-            {loginMutation.isPending ? (
-              <><Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} /> Signing in...</>
-            ) : 'Sign In'}
+            {isPending ? (
+              <><Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} /> {isRegister ? 'Registering Company...' : 'Signing in...'}</>
+            ) : (isRegister ? 'Register & Access Chatbot' : 'Sign In')}
           </button>
         </form>
 
