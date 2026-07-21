@@ -11,6 +11,7 @@ import json
 import os
 import uuid
 import urllib.request as _urllib_req
+import urllib.parse
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -59,6 +60,41 @@ def _load_json(path: Path, default) -> any:
 def _save_json(path: Path, data) -> None:
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
+
+def _resolve_main_backend_job_id(hireboard_job_id: str) -> str | None:
+    """
+    Given a HireBoard job id, return the main backend job UUID.
+
+    Two cases:
+    1. Local chatbot-created job (id like 'job-xxxx') — has main_backend_id stored in jobs.json
+    2. Live main-backend job (id like 'mb-XXXXXXXX') — UUID prefix embedded in id
+       We fetch the public endpoint to find the full UUID.
+    """
+    # Case 1: check local store
+    jobs: list = _load_json(JOBS_FILE, [])
+    if isinstance(jobs, dict):
+        jobs = jobs.get("jobs", [])
+    for j in jobs:
+        if j.get("id") == hireboard_job_id and j.get("main_backend_id"):
+            return j["main_backend_id"]
+
+    # Case 2: live main-backend job — id is 'mb-{first8charsOfUUID}'
+    if hireboard_job_id.startswith("mb-"):
+        short = hireboard_job_id[3:]  # 8-char hex prefix of the UUID
+        try:
+            req = _urllib_req.Request(
+                "http://localhost:8000/api/v1/jobs/public?page_size=200",
+                headers={"Accept": "application/json"},
+            )
+            with _urllib_req.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode())
+                for mj in data.get("items", []):
+                    if mj["id"].replace("-", "").startswith(short):
+                        return mj["id"]
+        except Exception as e:
+            print(f"[Platform] ⚠️  Could not resolve job UUID: {e}")
+
+    return None
 
 # ── Default data ──────────────────────────────────────────────────────────────
 
@@ -313,6 +349,33 @@ async def apply_for_job(
     _save_json(CANDIDATES_FILE, candidates)
 
     print(f"[Platform] ✅ New application: {name} ({email}) → {job_title} [{candidate_id}]")
+
+    # ── Also push to main backend so recruiter sees candidate ───────
+    main_job_id = _resolve_main_backend_job_id(job_id)
+    if main_job_id:
+        try:
+            params = urllib.parse.urlencode({
+                "name":         name,
+                "email":        email,
+                "phone":        phone,
+                "job_id":       main_job_id,
+                "linkedin_url": linkedin_url,
+                "cover_note":   cover_note,
+                "source":       "HireBoard",
+            })
+            req = _urllib_req.Request(
+                f"http://localhost:8000/api/v1/candidates/from-hireboard?{params}",
+                method="POST",
+                headers={"Content-Type": "application/json"},
+            )
+            with _urllib_req.urlopen(req, timeout=3) as resp:
+                result = json.loads(resp.read().decode())
+                print(f"[Platform] ✅ Synced to main backend: candidate_id={result.get('candidate_id')}")
+        except Exception as e:
+            print(f"[Platform] ⚠️  Could not sync to main backend: {e}")
+    else:
+        print(f"[Platform] ℹ️  No main_backend_id for job {job_id} — local-only job")
+
     return {
         "message": "Application submitted successfully!",
         "candidate_id": candidate_id,
