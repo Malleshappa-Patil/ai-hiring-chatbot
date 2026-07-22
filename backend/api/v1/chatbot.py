@@ -528,6 +528,33 @@ async def _trigger_hiring_workflow(session: dict) -> str:
             session["db_job_id"] = job.id
             await db.commit()
             print(f"[Chatbot] ✅ Job record created in DB: {job.id} ({job_title})")
+
+            # Initialize workflow state and advance to sourcing stage since JD is already approved
+            try:
+                from backend.services.workflow_service import workflow_service
+                await workflow_service.start_workflow(
+                    db=db,
+                    job_id=job.id,
+                    goal=job.hiring_goal,
+                    user_id=creator_id,
+                )
+                workflow = await workflow_service.get_workflow_status(db, job.id)
+                if workflow:
+                    await workflow_service.advance_stage(
+                        db,
+                        workflow.id,
+                        "sourcing",
+                        {
+                            "supervisor": "completed",
+                            "planning": "completed",
+                            "jd_generation": "completed",
+                            "sourcing": "running",
+                        }
+                    )
+                    await workflow_service.start_sourcing(db, job.id, workflow.id)
+                    print(f"[Chatbot] 🚀 Workflow triggered & advanced to sourcing for job: {job.id}")
+            except Exception as w_err:
+                print(f"[Chatbot] ⚠️  Failed to trigger workflow: {w_err}")
     except Exception as e:
         print(f"[Chatbot] ⚠️  Failed to persist Job to DB: {e}")
 
