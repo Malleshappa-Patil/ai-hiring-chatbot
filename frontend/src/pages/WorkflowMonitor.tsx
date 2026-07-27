@@ -411,6 +411,7 @@ export default function WorkflowMonitor() {
   const [zoom, setZoom] = useState(0.58)
   const [pan, setPan] = useState({ x: 0, y: 0 })
   const [isPanning, setIsPanning] = useState(false)
+  const [activeTab, setActiveTab] = useState<'graph' | 'logs'>('graph')
   const panStart = useRef({ mx: 0, my: 0, px: 0, py: 0 })
   const canvasRef = useRef<HTMLDivElement>(null)
   const qc = useQueryClient()
@@ -421,16 +422,21 @@ export default function WorkflowMonitor() {
     if (jobs?.items?.length && !selectedJobId) setSelectedJobId(jobs.items[0].id)
   }, [jobs, selectedJobId])
 
-  const { data: workflowState } = useQuery({
+  // Use retry:false so 404 errors don't spam retries; treat missing workflow as null gracefully
+  const { data: workflowState, isError: workflowError } = useQuery({
     queryKey: ['workflow-status', selectedJobId],
     queryFn: () => workflowApi.status(selectedJobId),
-    enabled: !!selectedJobId, refetchInterval: 5000,
+    enabled: !!selectedJobId,
+    refetchInterval: 5000,
+    retry: false,
   })
 
   const { data: logs } = useQuery<AgentLog[]>({
     queryKey: ['workflow-logs', selectedJobId],
     queryFn: () => workflowApi.logs(selectedJobId),
-    enabled: !!selectedJobId, refetchInterval: 5000,
+    enabled: !!selectedJobId,
+    refetchInterval: 5000,
+    retry: false,
   })
 
   const retryMutation = useMutation({
@@ -500,6 +506,7 @@ export default function WorkflowMonitor() {
     if (!workflowState) return 'idle'
     const cs = workflowState.current_stage
     const s = getStatus(id)
+    // Explicit agent_statuses always win
     if (['completed', 'failed', 'waiting_approval', 'running'].includes(s)) return s
     if (cs === 'completed') return 'completed'
     const ci = STAGE_ORDER.indexOf(cs), si = STAGE_ORDER.indexOf(id)
@@ -510,20 +517,39 @@ export default function WorkflowMonitor() {
     return 'idle'
   }
 
-  const getLogs = (id: string): AgentLog[] => {
-    if (!logs) return []
-    const nameMap: Record<string, string> = {
-      supervisor: 'Supervisor Agent', planning: 'Planning Agent', jd_generation: 'JD Agent',
-      sourcing: 'Sourcing Agent', monitoring: 'Monitoring Agent', screening: 'Resume Screening Agent',
-      interviewing: 'Interview Agent', offer_accepted: 'Onboarding Agent',
-      jd_optimization: 'JD Optimisation Agent', renegotiation: 'Renegotiation Agent',
-    }
-    if (id === 'human_approval') return []
-    if (id === 'human_review') return logs.filter(l => l.agent_name === 'Supervisor Agent' && l.action === 'human_review_completed')
-    return logs.filter(l => l.agent_name === nameMap[id])
+  // Comprehensive agent-name → node-id mapping (covers all agent names the backend emits)
+  const LOG_NAME_MAP: Record<string, string> = {
+    'Supervisor Agent': 'supervisor',
+    'Planning Agent': 'planning',
+    'JD Agent': 'jd_generation',
+    'Sourcing Agent': 'sourcing',
+    'Monitoring Agent': 'monitoring',
+    'Resume Screening Agent': 'screening',
+    'Interview Agent': 'interviewing',
+    'Onboarding Agent': 'offer_accepted',
+    'JD Optimisation Agent': 'jd_optimization',
+    'Renegotiation Agent': 'renegotiation',
+    'Comms Agent': 'rejection_email',
+    'Offer Agent': 'candidate_selected',
   }
 
-  const getSubStep = (state: StageState, idx: number) => {
+  const getLogs = (id: string): AgentLog[] => {
+    if (!logs) return []
+    if (id === 'human_approval') return []
+    if (id === 'human_review') {
+      return logs.filter(l =>
+        (l.agent_name === 'Supervisor Agent' && l.action === 'human_review_completed') ||
+        l.action.includes('human_review')
+      )
+    }
+    // Reverse lookup: find the agent name for this node id
+    const agentName = Object.entries(LOG_NAME_MAP).find(([, nodeId]) => nodeId === id)?.[0]
+    if (!agentName) return []
+    return logs.filter(l => l.agent_name === agentName)
+  }
+
+  const getSubStep = (state: StageState, nodeLogs: AgentLog[], idx: number) => {
+    // If we have real logs, all sub-steps are considered done for completed nodes
     if (state === 'completed') return 'done'
     if (state === 'idle') return 'pending'
     if (state === 'failed') return idx === 0 ? 'done' : idx === 1 ? 'failed' : 'pending'
@@ -535,6 +561,16 @@ export default function WorkflowMonitor() {
   const completedCount = NODES.filter(n => getState(n.id) === 'completed').length
   const progress = NODES.length ? Math.round((completedCount / NODES.length) * 100) : 0
   const isStuckInterview = workflowState?.current_stage === 'interviewing' && workflowState?.agent_statuses?.['interview'] === 'running'
+
+  // All logs sorted newest-first for timeline view
+  const allLogs: AgentLog[] = logs ? [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) : []
+
+  const formatTs = (ts: string) => {
+    try {
+      const d = new Date(ts)
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    } catch { return ts }
+  }
 
   // Edge type legend colours
   const EDGE_LEGEND = [
@@ -633,7 +669,17 @@ export default function WorkflowMonitor() {
                 )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                {/* Tab toggles */}
+                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                  {(['graph', 'logs'] as const).map(tab => (
+                    <button key={tab} onClick={() => setActiveTab(tab)}
+                      style={{ padding: '5px 14px', background: activeTab === tab ? 'rgba(99,102,241,0.2)' : 'transparent', border: 'none', color: activeTab === tab ? '#a5b4fc' : '#475569', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.15s' }}>
+                      {tab === 'logs' ? `📋 Exec Logs${allLogs.length > 0 ? ` (${allLogs.length})` : ''}` : '🗺 Graph'}
+                    </button>
+                  ))}
+                </div>
+
                 {/* Pipeline progress */}
                 <div>
                   <div style={{ fontSize: 10.5, color: '#374151', marginBottom: 4, textAlign: 'right' }}>Pipeline Progress</div>
@@ -645,7 +691,7 @@ export default function WorkflowMonitor() {
                   </div>
                 </div>
 
-                {workflowState && (() => {
+                {workflowState ? (() => {
                   const cs = workflowState.current_stage
                   const clr = cs === 'completed' ? '#10b981' : cs === 'failed' ? '#ef4444' : '#6366f1'
                   const label = cs === 'completed' ? 'Completed' : cs === 'failed' ? 'Failed' : `Active: ${cs.replace(/_/g, ' ')}`
@@ -655,7 +701,12 @@ export default function WorkflowMonitor() {
                       <span style={{ fontSize: 11, fontWeight: 600, color: clr }}>{label}</span>
                     </div>
                   )
-                })()}
+                })() : workflowError ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: 'rgba(245,158,11,0.08)', borderRadius: 20, border: '1px solid rgba(245,158,11,0.25)' }}>
+                    <AlertTriangle size={11} color="#f59e0b" />
+                    <span style={{ fontSize: 11, fontWeight: 600, color: '#f59e0b' }}>Workflow not started</span>
+                  </div>
+                ) : null}
 
                 {/* Loop indicator */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 20 }}>
@@ -665,7 +716,7 @@ export default function WorkflowMonitor() {
               </div>
             </div>
 
-            {/* Canvas + Detail panel */}
+            {/* Canvas + Detail panel OR Execution Log Timeline */}
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
               {/* SVG canvas */}
@@ -946,8 +997,71 @@ export default function WorkflowMonitor() {
                 </div>
               </div>
 
+              {/* ── EXECUTION LOG TIMELINE (tab) ────────── */}
+              {activeTab === 'logs' && (
+                <div style={{ width: '100%', position: 'absolute', inset: 0, overflowY: 'auto', background: '#07071a', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 0, zIndex: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Zap size={12} color="#818cf8" />
+                    Agent Execution Timeline
+                    <span style={{ marginLeft: 'auto', fontSize: 10, color: '#1f2937', fontWeight: 400 }}>{allLogs.length} log entries · auto-refreshes every 5s</span>
+                  </div>
+                  {allLogs.length === 0 ? (
+                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#374151', paddingTop: 60 }}>
+                      <Activity size={32} style={{ marginBottom: 10, opacity: 0.4 }} />
+                      <p style={{ fontSize: 13, color: '#374151' }}>No execution logs yet.</p>
+                      <p style={{ fontSize: 11, color: '#1f2937', marginTop: 4 }}>Logs will appear here as agents run.</p>
+                    </div>
+                  ) : allLogs.map((log, i) => {
+                    const nodeId = LOG_NAME_MAP[log.agent_name]
+                    const node = NODES.find(n => n.id === nodeId)
+                    const isSuccess = log.status === 'success'
+                    const dotColor = isSuccess ? '#10b981' : '#ef4444'
+                    return (
+                      <div key={log.id} style={{ display: 'flex', gap: 12, marginBottom: 0 }}>
+                        {/* Timeline line */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, boxShadow: `0 0 6px ${dotColor}`, flexShrink: 0, marginTop: 14 }} />
+                          {i < allLogs.length - 1 && <div style={{ width: 1, flex: 1, minHeight: 20, background: 'rgba(255,255,255,0.06)', marginTop: 3 }} />}
+                        </div>
+                        {/* Log card */}
+                        <div style={{ flex: 1, background: isSuccess ? 'rgba(255,255,255,0.02)' : 'rgba(239,68,68,0.04)', border: `1px solid ${isSuccess ? 'rgba(255,255,255,0.06)' : 'rgba(239,68,68,0.2)'}`, borderRadius: 9, padding: '10px 14px', marginBottom: 10 }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: '#a5b4fc' }}>{log.agent_name}</span>
+                              {node && <span style={{ fontSize: 9.5, color: '#374151', background: 'rgba(255,255,255,0.05)', padding: '2px 7px', borderRadius: 10 }}>{node.shortTitle}</span>}
+                              <span style={{ fontSize: 9.5, color: isSuccess ? '#10b981' : '#f87171', background: isSuccess ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', padding: '2px 7px', borderRadius: 10, border: `1px solid ${isSuccess ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
+                                {isSuccess ? '✓ success' : '✗ failed'}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                              {log.latency_ms > 0 && <span style={{ fontSize: 9.5, color: '#818cf8' }}>{log.latency_ms}ms</span>}
+                              {log.token_usage > 0 && <span style={{ fontSize: 9.5, color: '#6ee7b7' }}>{log.token_usage} tokens</span>}
+                              <span style={{ fontSize: 9.5, color: '#374151' }}>{formatTs(log.created_at)}</span>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 10.5, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 2 }}>Action</div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>{log.action.replace(/_/g, ' ')}</div>
+                          {log.input_summary && (
+                            <>
+                              <div style={{ fontSize: 10.5, color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 2 }}>Input</div>
+                              <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5, marginBottom: 6 }}>{log.input_summary}</div>
+                            </>
+                          )}
+                          {log.output_summary && (
+                            <>
+                              <div style={{ fontSize: 10.5, color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 2 }}>Output</div>
+                              <div style={{ fontSize: 11, color: '#a5b4fc', lineHeight: 1.5 }}>{log.output_summary}</div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+
               {/* ── DETAIL PANEL ───────────────────────── */}
-              {selectedNode && (() => {
+              {selectedNode && activeTab === 'graph' && (() => {
                 const nd = selectedNode
                 const state = getState(nd.id)
                 const c = stateColors(state)
@@ -985,7 +1099,7 @@ export default function WorkflowMonitor() {
                       <div style={{ fontSize: 9.5, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 8 }}>Execution Steps</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
                         {nd.subSteps.map((step, idx) => {
-                          const ss = getSubStep(state, idx)
+                          const ss = getSubStep(state, nodeLogs, idx)
                           return (
                             <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                               <div style={{ flexShrink: 0, width: 17, height: 17, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1000,6 +1114,22 @@ export default function WorkflowMonitor() {
                         })}
                       </div>
                     </div>
+
+                    {/* All logs for this node */}
+                    {nodeLogs.length > 1 && (
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ fontSize: 9.5, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 8 }}>All Runs ({nodeLogs.length})</div>
+                        {nodeLogs.map((lg, li) => (
+                          <div key={li} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 7, padding: '7px 10px', marginBottom: 5, fontSize: 10.5 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                              <span style={{ color: '#64748b' }}>{lg.action.replace(/_/g, ' ')}</span>
+                              <span style={{ color: '#374151' }}>{formatTs(lg.created_at)}</span>
+                            </div>
+                            {lg.output_summary && <div style={{ color: '#818cf8', lineHeight: 1.4 }}>{lg.output_summary}</div>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
 
                     {/* Metrics */}
                     {nodeLogs.length > 0 && (
@@ -1095,6 +1225,27 @@ export default function WorkflowMonitor() {
                   </div>
                 )
               })()}
+
+              {/* ── NO WORKFLOW BANNER ─────────────────── */}
+              {activeTab === 'graph' && !selectedNode && workflowError && (
+                <div style={{ width: 340, flexShrink: 0, borderLeft: '1px solid rgba(245,158,11,0.15)', background: 'rgba(8,8,18,0.98)', padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                    <AlertTriangle size={16} color="#f59e0b" />
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24' }}>Workflow Not Started</span>
+                  </div>
+                  <p style={{ fontSize: 11.5, color: '#64748b', lineHeight: 1.6 }}>
+                    No workflow has been initiated for <strong style={{ color: '#94a3b8' }}>{currentJob?.title}</strong>.
+                    Workflows start automatically when a job is created via the Recruiter dashboard or the AI chatbot.
+                  </p>
+                  <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 8, padding: 10 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>To start this workflow:</div>
+                    <ul style={{ fontSize: 11, color: '#64748b', paddingLeft: 14, lineHeight: 1.8, margin: 0 }}>
+                      <li>Go to <strong style={{ color: '#94a3b8' }}>Roles</strong> and approve a JD for this job, or</li>
+                      <li>Ask the chatbot to create a new job listing</li>
+                    </ul>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Legend bar */}

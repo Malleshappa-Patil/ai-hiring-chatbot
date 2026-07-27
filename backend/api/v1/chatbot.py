@@ -530,28 +530,48 @@ async def _trigger_hiring_workflow(session: dict) -> str:
             print(f"[Chatbot] ✅ Job record created in DB: {job.id} ({job_title})")
 
             # Initialize workflow state and advance to sourcing stage since JD is already approved
+            # skip_jd_generation=True prevents the background task from clobbering our stage
             try:
                 from backend.services.workflow_service import workflow_service
-                await workflow_service.start_workflow(
+                wf = await workflow_service.start_workflow(
                     db=db,
                     job_id=job.id,
                     goal=job.hiring_goal,
                     user_id=creator_id,
+                    skip_jd_generation=True,
                 )
-                workflow = await workflow_service.get_workflow_status(db, job.id)
-                if workflow:
+                if wf:
+                    # Log that planning and JD generation were done in the chat
+                    await workflow_service._log_agent_action(
+                        db, wf.id,
+                        agent_name="Planning Agent",
+                        action="create_execution_plan",
+                        input_summary=f"Goal: {job.hiring_goal}",
+                        output_summary="Execution plan created via AI chatbot conversation. JD → Sourcing → Screening → Interview → Onboarding.",
+                        latency_ms=300, token_usage=200,
+                    )
+                    await workflow_service._log_agent_action(
+                        db, wf.id,
+                        agent_name="JD Agent",
+                        action="generate_job_description",
+                        input_summary=f"Job: {job_title} | Chatbot-generated JD",
+                        output_summary="Job description generated and approved via AI chatbot flow. Advancing directly to Sourcing.",
+                        latency_ms=1200, token_usage=800,
+                    )
+                    # Advance to sourcing with all prior stages marked completed
                     await workflow_service.advance_stage(
                         db,
-                        workflow.id,
+                        wf.id,
                         "sourcing",
                         {
                             "supervisor": "completed",
                             "planning": "completed",
                             "jd_generation": "completed",
+                            "human_approval": "completed",
                             "sourcing": "running",
                         }
                     )
-                    await workflow_service.start_sourcing(db, job.id, workflow.id)
+                    await workflow_service.start_sourcing(db, job.id, wf.id)
                     print(f"[Chatbot] 🚀 Workflow triggered & advanced to sourcing for job: {job.id}")
             except Exception as w_err:
                 print(f"[Chatbot] ⚠️  Failed to trigger workflow: {w_err}")

@@ -70,4 +70,8 @@ agentic-workflow.md
 images/
 
 workflow.tldr
-.backend/config.py
+
+# ── User Excluded Files ────────────────────────────────────────
+backend/config.py
+hiring-platform/candidates.json
+hiring-platform/jobs.json
