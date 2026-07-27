@@ -42,7 +42,8 @@ class WorkflowService:
     """
 
     async def start_workflow(
-        self, db: AsyncSession, job_id: str, goal: str, user_id: str
+        self, db: AsyncSession, job_id: str, goal: str, user_id: str,
+        skip_jd_generation: bool = False,
     ) -> WorkflowState:
         """Initiate a new hiring workflow for a job."""
         # Check if workflow already exists for this job
@@ -72,11 +73,12 @@ class WorkflowService:
         )
         db.add(workflow)
 
-        # Update job status
-        job_result = await db.execute(select(Job).where(Job.id == job_id))
-        job = job_result.scalar_one_or_none()
-        if job:
-            job.status = "generating_jd"
+        # Update job status only if not bypassing JD generation
+        if not skip_jd_generation:
+            job_result = await db.execute(select(Job).where(Job.id == job_id))
+            job = job_result.scalar_one_or_none()
+            if job:
+                job.status = "generating_jd"
 
         await db.commit()
         await db.refresh(workflow)
@@ -94,19 +96,20 @@ class WorkflowService:
             agent_name="Supervisor Agent",
             action="workflow_initiated",
             input_summary=f"Goal: {goal}",
-            output_summary=f"Workflow started. Delegating to Planning Agent.",
+            output_summary="Workflow started. Delegating to Planning Agent.",
             latency_ms=150,
             token_usage=0,
         )
 
-        # Simulate planning stage progression in a background task with its own DB session
-        # We MUST NOT pass the request-scoped `db` session into the background task
-        # because that session will be closed when the request finishes.
-        asyncio.create_task(
-            self._simulate_jd_generation_bg(workflow.id, job_id, goal)
-        )
+        if not skip_jd_generation:
+            # Simulate planning stage progression in a background task with its own DB session
+            # We MUST NOT pass the request-scoped `db` session into the background task
+            # because that session will be closed when the request finishes.
+            asyncio.create_task(
+                self._simulate_jd_generation_bg(workflow.id, job_id, goal)
+            )
 
-        logger.info(f"Workflow {workflow.id} started for job {job_id}")
+        logger.info(f"Workflow {workflow.id} started for job {job_id} (skip_jd_generation={skip_jd_generation})")
         return workflow
 
     async def get_workflow_status(
