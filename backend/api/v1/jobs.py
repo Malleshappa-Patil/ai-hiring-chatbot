@@ -60,6 +60,7 @@ async def list_jobs_public(
             "experience_level":       j.experience_level,
             "hiring_goal":            j.hiring_goal,
             "target_candidate_count": seat_limit,
+            "application_open_days":  j.application_open_days or 7,
             "filled_count":           filled,
             "is_full":                is_full,
             "status":                 effective_status,
@@ -190,6 +191,7 @@ async def create_job(
         experience_level=payload.experience_level,
         hiring_goal=payload.hiring_goal,
         target_candidate_count=payload.target_candidate_count,
+        application_open_days=payload.application_open_days,
         status="draft",
         created_by=current_user.id,
     )
@@ -344,7 +346,7 @@ async def edit_jd(
 @router.delete("/{job_id}", status_code=204)
 async def delete_job(
     job_id: str,
-    current_user: User = Depends(require_hiring_manager_or_above),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     from backend.database.models import (

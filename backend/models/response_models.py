@@ -37,6 +37,7 @@ class JobResponse(BaseModel):
     status: str
     hiring_goal: str
     target_candidate_count: Optional[int] = 3
+    application_open_days: Optional[int] = 7
     created_by: str
     created_at: datetime
     updated_at: datetime
@@ -100,6 +101,7 @@ class WorkflowStateResponse(BaseModel):
     job_id: str
     current_stage: str
     agent_statuses: dict
+    state_data: Optional[dict] = None
     started_at: datetime
     updated_at: datetime
     error: Optional[str]

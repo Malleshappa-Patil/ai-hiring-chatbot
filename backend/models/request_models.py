@@ -26,6 +26,7 @@ class CreateJobRequest(BaseModel):
     experience_level: str
     hiring_goal: str
     target_candidate_count: Optional[int] = 3
+    application_open_days: Optional[int] = 7
 
 
 

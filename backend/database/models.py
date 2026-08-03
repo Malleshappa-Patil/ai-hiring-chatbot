@@ -52,6 +52,7 @@ class Job(Base):
     hiring_goal: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(50), default="draft")
     target_candidate_count: Mapped[Optional[int]] = mapped_column(Integer, default=3, nullable=True)
+    application_open_days: Mapped[Optional[int]] = mapped_column(Integer, default=7, nullable=True)
     created_by: Mapped[str] = mapped_column(String(36), ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

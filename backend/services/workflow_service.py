@@ -56,6 +56,11 @@ class WorkflowService:
             return existing_state
 
         # Create new workflow state
+        # Fetch job to get application_open_days
+        job_result = await db.execute(select(Job).where(Job.id == job_id))
+        job_obj = job_result.scalar_one_or_none()
+        open_days = job_obj.application_open_days if job_obj and job_obj.application_open_days else 7
+
         workflow = WorkflowState(
             job_id=job_id,
             current_stage="supervisor",
@@ -69,7 +74,7 @@ class WorkflowService:
                 "interview": "idle",
                 "onboarding": "idle",
             },
-            state_data={"goal": goal, "created_by": user_id},
+            state_data={"goal": goal, "created_by": user_id, "application_open_days": open_days},
         )
         db.add(workflow)
 
