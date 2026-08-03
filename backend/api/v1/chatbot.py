@@ -74,6 +74,7 @@ REQUIRED_FIELDS = {
     "experience_years":        "Experience Required",
     "location":                "Location / Remote Policy",
     "budget":                  "Salary Budget / Range",
+    "application_open_days":   "Application Open Days (how many days should this job stay open for candidates to apply)",
 }
 
 
@@ -203,6 +204,17 @@ def _regex_extract(message: str) -> dict:
                 result["additional_requirements"] = req
             break
 
+    # ── Application Open Days ─────────────────────────────────────────────
+    days_patterns = [
+        r'(?:application\s*(?:open)?\s*days?|open\s*for|keep\s*open|posting\s*(?:duration|days?)|days?\s*(?:to\s*apply|open))\s*[:\-–—]?\s*(\d+)\s*(?:days?)?',
+        r'(\d+)\s*days?\s*(?:open|for\s*(?:application|apply|candidates))',
+    ]
+    for pat in days_patterns:
+        m = re.search(pat, msg, re.IGNORECASE)
+        if m:
+            result["application_open_days"] = int(m.group(1))
+            break
+
     return result
 
 
@@ -222,6 +234,7 @@ Fields to look for:
 - "experience_years": string — experience needed (e.g. "5 years")
 - "location": string — work location (e.g. "Bengaluru")
 - "budget": string — salary range (e.g. "18-20 LPA CTC")
+- "application_open_days": integer — how many days to keep the job posting open for candidates to apply (e.g. 7, 14, 30)
 - "additional_requirements": string — extra requirements
 
 User's message:
@@ -333,6 +346,7 @@ def _build_summary(hr: dict) -> str:
         f"- **Location**: {hr.get('location', 'Not specified')}\n"
         f"- **Budget/Salary**: {hr.get('budget', 'Not specified')}\n"
         f"- **Candidates to Hire**: {hr.get('candidates_needed', 'Not specified')}\n"
+        f"- **Application Open For**: {hr.get('application_open_days', 7)} days\n"
         f"- **Additional Requirements**: {hr.get('additional_requirements', 'None')}"
     )
 
@@ -509,6 +523,7 @@ async def _trigger_hiring_workflow(session: dict) -> str:
                 experience_level=str(hr.get("experience_years", "Not specified")),
                 hiring_goal=f"Hire {hr.get('candidates_needed', 1)} {job_title}(s)",
                 target_candidate_count=int(hr.get("candidates_needed", 1)),
+                application_open_days=int(hr.get("application_open_days", 7)),
                 status="approved",
                 created_by=creator_id,
             )
@@ -599,6 +614,7 @@ async def _trigger_hiring_workflow(session: dict) -> str:
             "company_id":             session.get("company_id", "company-001"),
             "target_candidate_count": int(hr.get("candidates_needed", 1)),
             "openings":               int(hr.get("candidates_needed", 1)),
+            "application_open_days":  int(hr.get("application_open_days", 7)),
             "main_backend_id":        session.get("db_job_id"),
         }
 

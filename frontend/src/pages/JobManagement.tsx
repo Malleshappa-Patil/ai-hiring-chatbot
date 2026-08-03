@@ -13,6 +13,7 @@ export default function JobManagement() {
   const [form, setForm] = useState<CreateJobRequest>({
     title: '', department: '', location: '', job_type: 'full_time',
     experience_level: '', hiring_goal: '', target_candidate_count: 3,
+    application_open_days: 7,
   })
 
   const { data: jobs, isLoading } = useQuery({
@@ -32,7 +33,7 @@ export default function JobManagement() {
       toast.success('Job created! AI workflow starting...')
       qc.invalidateQueries({ queryKey: ['jobs'] })
       setShowCreate(false)
-      setForm({ title: '', department: '', location: '', job_type: 'full_time', experience_level: '', hiring_goal: '', target_candidate_count: 3 })
+      setForm({ title: '', department: '', location: '', job_type: 'full_time', experience_level: '', hiring_goal: '', target_candidate_count: 3, application_open_days: 7 })
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.detail || 'Failed to create job'
@@ -97,21 +98,7 @@ export default function JobManagement() {
           <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#e2e8f0' }}>Job Management</h1>
           <p style={{ fontSize: '14px', color: '#64748b' }}>Create jobs and review AI-generated job descriptions</p>
         </div>
-        <button
-          id="create-job-btn"
-          onClick={() => setShowCreate(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '8px',
-            padding: '10px 20px',
-            background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-            border: 'none', borderRadius: '10px',
-            color: 'white', fontSize: '14px', fontWeight: 600,
-            cursor: 'pointer',
-            boxShadow: '0 4px 15px rgba(99,102,241,0.35)',
-          }}
-        >
-          <Plus size={18} /> Create Job
-        </button>
+
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: selectedJob ? '1fr 1fr' : '1fr', gap: '20px' }}>
@@ -345,6 +332,24 @@ export default function JobManagement() {
                   max={50}
                   value={form.target_candidate_count ?? 3}
                   onChange={e => setForm(p => ({ ...p, target_candidate_count: parseInt(e.target.value) || 1 }))}
+                  style={{
+                    width: '100%', padding: '10px 14px',
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '10px', color: '#e2e8f0', fontSize: '14px',
+                    outline: 'none', boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px', fontWeight: 500 }}>
+                  How many days should this application stay open for candidates?
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={form.application_open_days ?? 7}
+                  onChange={e => setForm(p => ({ ...p, application_open_days: parseInt(e.target.value) || 1 }))}
                   style={{
                     width: '100%', padding: '10px 14px',
                     background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
