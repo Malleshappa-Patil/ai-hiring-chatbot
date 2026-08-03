@@ -263,6 +263,7 @@ async def list_jobs(company_id: Optional[str] = None):
             "description":            mj.get("hiring_goal", ""),
             "target_candidate_count": mj.get("target_candidate_count", 1),
             "openings":               mj.get("target_candidate_count", 1),
+            "application_open_days":  mj.get("application_open_days", 7),
             "is_full":                mj.get("is_full", False),
             "status":                 mj.get("status", "open"),
             "posted_at":              mj.get("created_at", datetime.utcnow().isoformat()),
@@ -292,6 +293,7 @@ async def create_job(job: dict):
     job.setdefault("posted_at", datetime.utcnow().isoformat())
     job.setdefault("status", "open")
     job.setdefault("company_id", "company-001")
+    job.setdefault("application_open_days", 7)
 
     # Ensure company exists in companies.json so an accordion section renders
     co_id = job["company_id"]
