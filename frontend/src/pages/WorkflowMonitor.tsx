@@ -485,6 +485,20 @@ export default function WorkflowMonitor() {
   const stopPan = () => setIsPanning(false)
 
   const currentJob = jobs?.items?.find(j => j.id === selectedJobId)
+  const openDays = currentJob?.application_open_days ?? workflowState?.state_data?.application_open_days ?? 7
+
+  const mappedNodes = NODES.map(node => {
+    if (node.id === 'wait_primary') {
+      return {
+        ...node,
+        title: `Wait ${openDays} Days`,
+        shortTitle: `Wait (${openDays}d)`,
+        description: `System waits ${openDays} days for applications to accumulate before evaluating threshold.`,
+        subSteps: [`Hold pipeline for ${openDays} days`, 'Monitor application stream passively']
+      }
+    }
+    return node
+  })
 
   const getStatus = (id: string): StageState => {
     if (!workflowState) return 'idle'
@@ -504,15 +518,19 @@ export default function WorkflowMonitor() {
 
   const getState = (id: string): StageState => {
     if (!workflowState) return 'idle'
-    const cs = workflowState.current_stage
     const s = getStatus(id)
-    // Explicit agent_statuses always win
-    if (['completed', 'failed', 'waiting_approval', 'running'].includes(s)) return s
-    if (cs === 'completed') return 'completed'
-    const ci = STAGE_ORDER.indexOf(cs), si = STAGE_ORDER.indexOf(id)
-    if (ci !== -1 && si !== -1) {
-      if (si < ci) return 'completed'
-      if (si === ci) return 'running'
+    if (s !== 'idle') return s
+
+    // If the node itself is idle, check if any subsequent node is active/completed
+    const idx = STAGE_ORDER.indexOf(id)
+    if (idx !== -1) {
+      for (let i = idx + 1; i < STAGE_ORDER.length; i++) {
+        const nextId = STAGE_ORDER[i]
+        const nextStatus = getStatus(nextId)
+        if (['completed', 'running', 'waiting_approval', 'failed'].includes(nextStatus)) {
+          return 'completed'
+        }
+      }
     }
     return 'idle'
   }
@@ -558,8 +576,8 @@ export default function WorkflowMonitor() {
     return 'pending'
   }
 
-  const completedCount = NODES.filter(n => getState(n.id) === 'completed').length
-  const progress = NODES.length ? Math.round((completedCount / NODES.length) * 100) : 0
+  const completedCount = mappedNodes.filter(n => getState(n.id) === 'completed').length
+  const progress = mappedNodes.length ? Math.round((completedCount / mappedNodes.length) * 100) : 0
   const isStuckInterview = workflowState?.current_stage === 'interviewing' && workflowState?.agent_statuses?.['interview'] === 'running'
 
   // All logs sorted newest-first for timeline view
@@ -807,8 +825,8 @@ export default function WorkflowMonitor() {
 
                     {/* ── EDGES ──────────────────────────────────── */}
                     {EDGES.map((edge, ei) => {
-                      const fromNode = NODES.find(n => n.id === edge.from)
-                      const toNode = NODES.find(n => n.id === edge.to)
+                      const fromNode = mappedNodes.find(n => n.id === edge.from)
+                      const toNode = mappedNodes.find(n => n.id === edge.to)
                       if (!fromNode || !toNode) return null
                       const fromState = getState(edge.from)
                       const es = edgeStyle(edge.type, fromState)
@@ -856,7 +874,7 @@ export default function WorkflowMonitor() {
                     })}
 
                     {/* ── NODES ──────────────────────────────────── */}
-                    {NODES.map(node => {
+                    {mappedNodes.map(node => {
                       const state = getState(node.id)
                       const c = stateColors(state)
                       const isSel = selectedNode?.id === node.id
@@ -953,7 +971,7 @@ export default function WorkflowMonitor() {
 
                   {/* Icon overlays */}
                   <div style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
-                    {NODES.map(node => {
+                    {mappedNodes.map(node => {
                       const state = getState(node.id)
                       const c = stateColors(state)
                       const Icon = node.icon
@@ -1000,10 +1018,40 @@ export default function WorkflowMonitor() {
               {/* ── EXECUTION LOG TIMELINE (tab) ────────── */}
               {activeTab === 'logs' && (
                 <div style={{ width: '100%', position: 'absolute', inset: 0, overflowY: 'auto', background: '#07071a', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 0, zIndex: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Zap size={12} color="#818cf8" />
-                    Agent Execution Timeline
-                    <span style={{ marginLeft: 'auto', fontSize: 10, color: '#1f2937', fontWeight: 400 }}>{allLogs.length} log entries · auto-refreshes every 5s</span>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', width: '100%' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <Zap size={12} color="#818cf8" />
+                      Agent Execution Timeline
+                      <span style={{ marginLeft: 12, fontSize: 10, color: '#475569', fontWeight: 400, textTransform: 'none' }}>{allLogs.length} log entries · auto-refreshes every 5s</span>
+                    </div>
+                    <button
+                      onClick={() => setActiveTab('graph')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 12px',
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '8px',
+                        color: '#94a3b8',
+                        fontSize: '11px',
+                        fontWeight: 600,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        textTransform: 'none'
+                      }}
+                      onMouseEnter={e => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
+                        e.currentTarget.style.color = '#e2e8f0'
+                      }}
+                      onMouseLeave={e => {
+                        e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
+                        e.currentTarget.style.color = '#94a3b8'
+                      }}
+                    >
+                      <X size={14} /> Close Logs
+                    </button>
                   </div>
                   {allLogs.length === 0 ? (
                     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#374151', paddingTop: 60 }}>
@@ -1013,7 +1061,7 @@ export default function WorkflowMonitor() {
                     </div>
                   ) : allLogs.map((log, i) => {
                     const nodeId = LOG_NAME_MAP[log.agent_name]
-                    const node = NODES.find(n => n.id === nodeId)
+                    const node = mappedNodes.find(n => n.id === nodeId)
                     const isSuccess = log.status === 'success'
                     const dotColor = isSuccess ? '#10b981' : '#ef4444'
                     return (
@@ -1062,7 +1110,7 @@ export default function WorkflowMonitor() {
 
               {/* ── DETAIL PANEL ───────────────────────── */}
               {selectedNode && activeTab === 'graph' && (() => {
-                const nd = selectedNode
+                const nd = mappedNodes.find(n => n.id === selectedNode.id) || selectedNode
                 const state = getState(nd.id)
                 const c = stateColors(state)
                 const nodeLogs = getLogs(nd.id)
@@ -1191,7 +1239,7 @@ export default function WorkflowMonitor() {
                         <div style={{ marginBottom: 8 }}>
                           <div style={{ fontSize: 9, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 5 }}>Incoming Edges</div>
                           {inEdges.map((e, i) => {
-                            const n = NODES.find(x => x.id === e.from)
+                            const n = mappedNodes.find(x => x.id === e.from)
                             const typeColors: Record<string, string> = { forward: '#10b981', branch_yes: '#10b981', branch_no: '#f59e0b', loop: '#f97316', feedback: '#ec4899' }
                             return (
                               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 7, marginBottom: 3 }}>
@@ -1207,10 +1255,10 @@ export default function WorkflowMonitor() {
                         <div>
                           <div style={{ fontSize: 9, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 5 }}>Outgoing Edges</div>
                           {outEdges.map((e, i) => {
-                            const n = NODES.find(x => x.id === e.to)
+                            const n = mappedNodes.find(x => x.id === e.to)
                             const typeColors: Record<string, string> = { forward: '#10b981', branch_yes: '#10b981', branch_no: '#f59e0b', loop: '#f97316', feedback: '#ec4899' }
                             return (
-                              <div key={i} onClick={() => { const t = NODES.find(x => x.id === e.to); if (t) setSelectedNode(t) }}
+                              <div key={i} onClick={() => { const t = mappedNodes.find(x => x.id === e.to); if (t) setSelectedNode(t) }}
                                 style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 7, marginBottom: 3, cursor: 'pointer' }}>
                                 <span style={{ width: 5, height: 5, borderRadius: '50%', background: typeColors[e.type], flexShrink: 0 }} />
                                 <span style={{ fontSize: 10.5, color: '#64748b', flex: 1 }}>{n?.shortTitle || e.to}</span>

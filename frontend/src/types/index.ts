@@ -44,6 +44,7 @@ export interface Job {
   status: JobStatus
   hiring_goal: string
   target_candidate_count?: number
+  application_open_days?: number
   created_by: string
   created_at: string
   updated_at: string
@@ -71,6 +72,7 @@ export interface CreateJobRequest {
   experience_level: string
   hiring_goal: string
   target_candidate_count?: number
+  application_open_days?: number
 }
 
 // ── Candidates ───────────────────────────────────────────────────
