@@ -244,6 +244,7 @@ export default function AIChatbot() {
   const [workflowTriggered, setWorkflowTriggered] = useState(false)
   const [hasUnread, setHasUnread] = useState(false)
   const [jdContent, setJdContent] = useState<string | null>(null)
+  const [inputHeight, setInputHeight] = useState('42px')
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const queryClient = useQueryClient()
@@ -255,6 +256,18 @@ export default function AIChatbot() {
   useEffect(() => {
     scrollToBottom()
   }, [messages, scrollToBottom])
+
+  // Dynamically auto-resize the chat input textarea as content changes
+  useEffect(() => {
+    const textarea = inputRef.current
+    if (textarea) {
+      textarea.style.height = 'auto'
+      const scrollHeight = textarea.scrollHeight
+      // Clamp height between 42px and 150px
+      const newHeight = Math.min(Math.max(scrollHeight, 42), 150)
+      setInputHeight(`${newHeight}px`)
+    }
+  }, [inputValue])
 
   // Restore chatbot session on mount
   useEffect(() => {
@@ -666,7 +679,8 @@ export default function AIChatbot() {
                   fontFamily: 'Inter, system-ui, sans-serif',
                   transition: 'border-color 0.2s, box-shadow 0.2s',
                   resize: 'none' as const,
-                  height: '42px',
+                  height: inputHeight,
+                  overflowY: inputRef.current && inputRef.current.scrollHeight > 150 ? 'auto' : 'hidden',
                   lineHeight: '1.4',
                 }}
               />
