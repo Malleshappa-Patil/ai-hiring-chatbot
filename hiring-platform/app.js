@@ -28,10 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('company-modal').addEventListener('click', (e) => {
     if (e.target === e.currentTarget) closeCompanyModal();
   });
+  document.getElementById('jd-modal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeJdModal();
+  });
 
   // ESC closes any open modal
   document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { closeModal(); closeCompanyModal(); }
+    if (e.key === 'Escape') { closeModal(); closeCompanyModal(); closeJdModal(); }
   });
 
   // Keyboard support for company accordion headers (Enter / Space)
@@ -179,6 +182,14 @@ function renderJobRow(job, index) {
          aria-label="Apply for ${escAttr(job.title)}"
        >Apply Now</button>`;
 
+  const viewJdBtn = job.description
+    ? `<button
+         class="btn-view-jd"
+         onclick="event.stopPropagation(); openJdModal('${escAttr(job.id)}')"
+         aria-label="View Job Description for ${escAttr(job.title)}"
+       >View JD</button>`
+    : '';
+
   return `
     <div class="job-card${isClosed ? ' job-card--closed' : ''}" id="job-card-${escHtml(job.id)}">
       <div class="job-icon" aria-hidden="true">${icon}</div>
@@ -198,7 +209,10 @@ function renderJobRow(job, index) {
       <div class="job-right">
         <span class="job-salary">${escHtml(job.salary || 'Competitive')}</span>
         <span class="status-badge${isClosed ? ' status-badge--closed' : ''}">${escHtml(statusLabel)}</span>
-        ${applyBtn}
+        <div class="job-actions">
+          ${viewJdBtn}
+          ${applyBtn}
+        </div>
       </div>
     </div>`;
 }
@@ -410,6 +424,57 @@ function closeModal() {
 
 function scrollToJobs() {
   document.getElementById('companies').scrollIntoView({ behavior: 'smooth' });
+}
+
+// ── JD Modal ──────────────────────────────────────────────────────────────────
+let jdJob = null;
+
+function openJdModal(jobId) {
+  jdJob = jobs.find(j => j.id === jobId) || null;
+  if (!jdJob) return;
+
+  const modal = document.getElementById('jd-modal');
+  const label = document.getElementById('jd-modal-label');
+  const body  = document.getElementById('jd-modal-body');
+  const applyBtn = document.getElementById('jd-apply-btn');
+
+  const isClosed = (jdJob.status || 'open').toLowerCase() === 'not_hiring'
+    || (jdJob.status || 'open').toLowerCase() === 'closed'
+    || jdJob.is_full === true;
+
+  label.textContent = `${jdJob.title} — ${jdJob.location || 'Remote'}`;
+
+  if (jdJob.description) {
+    // Render markdown if marked.js is available, else plain text
+    if (typeof marked !== 'undefined') {
+      body.innerHTML = marked.parse(jdJob.description);
+    } else {
+      body.innerHTML = `<pre style="white-space:pre-wrap">${escHtml(jdJob.description)}</pre>`;
+    }
+  } else {
+    body.innerHTML = `<p style="color:#64748b;text-align:center;padding:40px 0">No job description available yet.</p>`;
+  }
+
+  applyBtn.textContent = isClosed ? 'Applications Closed' : 'Apply Now';
+  applyBtn.disabled    = isClosed;
+  applyBtn.style.opacity = isClosed ? '0.5' : '1';
+
+  modal.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeJdModal() {
+  document.getElementById('jd-modal').classList.remove('open');
+  document.body.style.overflow = '';
+  jdJob = null;
+}
+
+function applyFromJd() {
+  if (!jdJob) return;
+  const jobId = jdJob.id;
+  closeJdModal();
+  // Small delay so JD modal finishes closing before apply modal opens
+  setTimeout(() => openModal(jobId), 80);
 }
 
 // ── Drop Zone ─────────────────────────────────────────────────────────────────

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=3" />
+  <link rel="stylesheet" href="style.css?v=4" />
 </head>
 <body>
 
@@ -204,6 +204,27 @@
     </div>
   </div>
 
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <!-- Modal: View Job Description (JD)                          -->
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div id="jd-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="jd-modal-heading">
+    <div class="modal modal--jd" role="document">
+      <div class="modal-header">
+        <div>
+          <h2 class="modal-heading" id="jd-modal-heading">Job Description</h2>
+          <p class="modal-job-label" id="jd-modal-label">Loading…</p>
+        </div>
+        <button class="modal-close" onclick="closeJdModal()" aria-label="Close">✕</button>
+      </div>
+      <div id="jd-modal-body" class="jd-body">
+        <!-- Rendered markdown JD will be injected here -->
+      </div>
+      <div class="jd-modal-footer">
+        <button class="btn-submit" id="jd-apply-btn" onclick="applyFromJd()">Apply Now</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ── Toast ───────────────────────────────────────────────── -->
   <div id="toast" class="toast" role="alert" aria-live="assertive">
     <span id="toast-msg"></span>
@@ -220,6 +241,7 @@
     </div>
   </footer>
 
-  <script src="app.js?v=3"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>

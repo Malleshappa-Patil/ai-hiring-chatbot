@@ -977,3 +977,132 @@ a:hover { text-decoration: underline; }
   .page-intro { padding: 28px 0 24px; }
   .page-title { font-size: 22px; }
 }
+
+/* ── JD Modal (wider + taller) ──────────────────────────────── */
+.modal--jd {
+  max-width: 760px;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  padding: 36px;
+}
+
+.modal--jd .modal-header {
+  flex-shrink: 0;
+}
+
+.jd-body {
+  flex: 1;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gray-700) transparent;
+  padding: 0 4px 24px;
+  line-height: 1.75;
+  font-size: 14px;
+  color: var(--gray-200);
+}
+
+/* ── Rendered Markdown typography ───────────────────────────── */
+.jd-body h1, .jd-body h2, .jd-body h3, .jd-body h4 {
+  color: var(--white);
+  font-weight: 700;
+  margin: 20px 0 8px;
+}
+.jd-body h1 { font-size: 20px; }
+.jd-body h2 { font-size: 17px; border-bottom: var(--border); padding-bottom: 6px; }
+.jd-body h3 { font-size: 15px; }
+.jd-body p  { margin: 0 0 12px; }
+.jd-body ul, .jd-body ol {
+  padding-left: 22px;
+  margin: 0 0 12px;
+}
+.jd-body li { margin-bottom: 4px; }
+.jd-body strong { color: var(--white); font-weight: 600; }
+.jd-body em { color: var(--gray-300); }
+.jd-body code {
+  background: var(--gray-800);
+  border: var(--border);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 12px;
+  font-family: monospace;
+  color: #e2e8f0;
+}
+.jd-body pre {
+  background: var(--gray-800);
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  overflow-x: auto;
+  margin: 0 0 14px;
+}
+.jd-body pre code { background: none; border: none; padding: 0; }
+.jd-body blockquote {
+  border-left: 3px solid var(--gray-600);
+  padding-left: 14px;
+  margin: 0 0 12px;
+  color: var(--gray-400);
+}
+.jd-body a { color: #93c5fd; text-decoration: underline; }
+.jd-body hr { border: none; border-top: var(--border); margin: 16px 0; }
+.jd-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 14px;
+  font-size: 13px;
+}
+.jd-body th, .jd-body td {
+  border: var(--border);
+  padding: 8px 12px;
+  text-align: left;
+}
+.jd-body th { background: var(--gray-800); color: var(--white); font-weight: 600; }
+
+/* ── JD Modal Footer ────────────────────────────────────────── */
+.jd-modal-footer {
+  flex-shrink: 0;
+  padding-top: 20px;
+  border-top: var(--border);
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── View JD Button ─────────────────────────────────────────── */
+.btn-view-jd {
+  padding: 7px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--white);
+  background: transparent;
+  border: var(--border-hover);
+  cursor: pointer;
+  transition: var(--transition);
+  white-space: nowrap;
+}
+
+.btn-view-jd:hover {
+  background: var(--gray-800);
+  border-color: var(--gray-400);
+}
+
+/* ── Job Actions Wrapper (View JD + Apply Now side by side) ─── */
+.job-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+@media (max-width: 640px) {
+  .job-actions {
+    flex-direction: column;
+    width: 100%;
+  }
+  .btn-view-jd, .btn-apply {
+    width: 100%;
+    text-align: center;
+    justify-content: center;
+  }
+}
+

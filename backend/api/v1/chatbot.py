@@ -609,7 +609,7 @@ async def _trigger_hiring_workflow(session: dict) -> str:
             "experience":             str(hr.get("experience_years", "Not specified")),
             "salary":                 str(hr.get("budget", "Competitive")),
             "skills":                 skills_list,
-            "description":            session.get("jd_content", "")[:500] if session.get("jd_content") else "",
+            "description":            session.get("jd_content", "") or "",
             "status":                 "open",
             "company_id":             session.get("company_id", "company-001"),
             "target_candidate_count": int(hr.get("candidates_needed", 1)),
