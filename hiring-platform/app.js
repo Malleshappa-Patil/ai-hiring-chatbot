@@ -125,7 +125,6 @@ function renderCompanySection(company, idx) {
           <div>
             <div class="company-name">
               ${escHtml(company.name)}
-              <span class="company-jobs-count">${openCount} open</span>
             </div>
             <div class="company-tagline">${escHtml(company.tagline || '')}</div>
           </div>
