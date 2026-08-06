@@ -61,7 +61,10 @@ async def receive_hireboard_application(
         .where(Candidate.job_id == job_id)
     )
     if existing.scalar_one_or_none():
-        return {"message": "Candidate already applied", "duplicate": True}
+        raise HTTPException(
+            status_code=400,
+            detail="You have already applied for this position."
+        )
 
     candidate = Candidate(
         name=name,

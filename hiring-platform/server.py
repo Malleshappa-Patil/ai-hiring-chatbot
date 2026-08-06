@@ -12,6 +12,7 @@ import os
 import uuid
 import urllib.request as _urllib_req
 import urllib.parse
+import urllib.error
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -449,6 +450,14 @@ async def apply_for_job(
                 print(f"[Platform] Synced to main backend: candidate_id={result.get('candidate_id')}")
         except HTTPException:
             raise
+        except urllib.error.HTTPError as he:
+            try:
+                err_data = json.loads(he.read().decode())
+                err_detail = err_data.get("detail", str(he))
+            except Exception:
+                err_detail = str(he)
+            print(f"[Platform] Sync failed: {he.code} - {err_detail}")
+            raise HTTPException(status_code=he.code, detail=err_detail)
         except Exception as e:
             print(f"[Platform] Could not sync to main backend: {e}")
     else:
