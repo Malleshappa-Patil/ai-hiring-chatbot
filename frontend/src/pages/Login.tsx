@@ -2,8 +2,35 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { authApi } from '@/api'
-import { Bot, Mail, Lock, Eye, EyeOff, Loader2, Building, User } from 'lucide-react'
+import { Loader2, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
+
+/* ── Editorial colour tokens ──────────────────────────────────── */
+const C = {
+  bg:        '#181818',
+  text:      '#EBDCC4',
+  muted:     '#B6A596',
+  faint:     '#7A6A5E',
+  accent:    '#DC9F85',
+  border:    '#66473B',
+  divider:   '#35211A',
+  input:     'rgba(235,220,196,0.04)',
+}
+
+/* ── Inline styles helper ────────────────────────────────────── */
+const field: React.CSSProperties = {
+  width: '100%',
+  padding: '11px 14px',
+  background: C.input,
+  border: `1px solid ${C.border}`,
+  borderRadius: '4px',
+  color: C.text,
+  fontSize: '14px',
+  fontFamily: "'General Sans', 'Inter', sans-serif",
+  outline: 'none',
+  boxSizing: 'border-box',
+  transition: 'border-color 0.15s ease',
+}
 
 export default function Login() {
   const navigate = useNavigate()
@@ -11,7 +38,6 @@ export default function Login() {
   const [isRegister, setIsRegister] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [fullName, setFullName] = useState('')
   const [companyName, setCompanyName] = useState('')
   const [showPwd, setShowPwd] = useState(false)
 
@@ -21,12 +47,10 @@ export default function Login() {
       localStorage.setItem('access_token', data.access_token)
       localStorage.setItem('refresh_token', data.refresh_token)
       queryClient.clear()
-      toast.success('Welcome back!')
+      toast.success('Welcome back.')
       navigate('/dashboard')
     },
-    onError: () => {
-      toast.error('Invalid credentials. Please try again.')
-    },
+    onError: () => toast.error('Invalid credentials.'),
   })
 
   const registerMutation = useMutation({
@@ -38,25 +62,19 @@ export default function Login() {
       role: 'recruiter',
     }),
     onSuccess: () => {
-      toast.success('Company registered! Signing in...')
+      toast.success('Company registered.')
       loginMutation.mutate()
     },
     onError: (err: any) => {
-      toast.error(err?.response?.data?.detail || 'Registration failed. Please try again.')
+      toast.error(err?.response?.data?.detail || 'Registration failed.')
     },
   })
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!email || !password) {
-      toast.error('Please fill in email and password')
-      return
-    }
+    if (!email || !password) { toast.error('Enter email and password.'); return }
     if (isRegister) {
-      if (!companyName) {
-        toast.error('Please fill in your company name')
-        return
-      }
+      if (!companyName) { toast.error('Enter company name.'); return }
       registerMutation.mutate()
     } else {
       loginMutation.mutate()
@@ -68,210 +86,441 @@ export default function Login() {
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0a0a0a',
+      background: C.bg,
       display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      padding: '24px',
+      flexDirection: 'column',
+      fontFamily: "'General Sans', 'Inter', system-ui, sans-serif",
       position: 'relative',
       overflow: 'hidden',
     }}>
-      {/* Subtle background texture */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        backgroundImage: 'radial-gradient(circle at 1px 1px, rgba(255,255,255,0.03) 1px, transparent 0)',
-        backgroundSize: '32px 32px',
-        pointerEvents: 'none',
-      }} />
 
-      {/* Card */}
-      <div style={{
-        width: '100%',
-        maxWidth: '420px',
-        background: '#111111',
-        border: '1px solid #1e1e1e',
-        borderRadius: '14px',
-        padding: '36px',
-        position: 'relative',
-        zIndex: 1,
+      {/* ── Noise overlay ──────────────────────────────────────── */}
+      <svg style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', opacity: 0.03, pointerEvents: 'none', zIndex: 0 }}>
+        <filter id="noise-filter">
+          <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch" />
+        </filter>
+        <rect width="100%" height="100%" filter="url(#noise-filter)" />
+      </svg>
+
+      {/* ── Minimal Navigation ────────────────────────────────── */}
+      <nav style={{
+        position: 'absolute',
+        top: 0, left: 0, right: 0,
+        padding: '20px 36px',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '20px',
+        zIndex: 10,
       }}>
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: '24px' }}>
-          <div style={{
-            width: '52px', height: '52px', borderRadius: '12px',
-            background: '#ffffff',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            margin: '0 auto 14px',
-          }}>
-            <Bot size={26} color="#0a0a0a" />
-          </div>
-          <h1 style={{
-            fontSize: '22px', fontWeight: 700, color: '#ffffff', marginBottom: '4px',
-          }}>
-            AI Hiring Platform
-          </h1>
-          <p style={{ color: '#555555', fontSize: '13px' }}>
-            Enterprise Recruitment Automation
-          </p>
-        </div>
-
-        {/* Tab Switcher */}
-        <div style={{
-          display: 'flex', background: '#1a1a1a', padding: '4px',
-          borderRadius: '10px', marginBottom: '24px', border: '1px solid #2a2a2a',
+        {/* Left: Brand ID */}
+        <span style={{
+          fontFamily: "'Clash Grotesk', 'General Sans', sans-serif",
+          fontSize: '11px',
+          fontWeight: 700,
+          color: C.muted,
+          letterSpacing: '0.18em',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
         }}>
-          <button
-            type="button"
-            onClick={() => setIsRegister(false)}
-            style={{
-              flex: 1, padding: '9px', borderRadius: '7px', border: 'none',
-              fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-              background: !isRegister ? '#262626' : 'transparent',
-              color: !isRegister ? '#ffffff' : '#666666',
-              transition: 'all 0.2s',
-            }}
-          >
-            Sign In
-          </button>
-          <button
-            type="button"
-            onClick={() => setIsRegister(true)}
-            style={{
-              flex: 1, padding: '9px', borderRadius: '7px', border: 'none',
-              fontSize: '13px', fontWeight: 600, cursor: 'pointer',
-              background: isRegister ? '#262626' : 'transparent',
-              color: isRegister ? '#ffffff' : '#666666',
-              transition: 'all 0.2s',
-            }}
-          >
-            Register Company
-          </button>
-        </div>
+          AI—HIRING 01
+        </span>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit}>
-          {isRegister && (
-            <>
-              {/* Company Name */}
-              <div style={{ marginBottom: '14px' }}>
-                <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#888888', marginBottom: '7px' }}>
-                  Company Name
-                </label>
-                <div style={{ position: 'relative' }}>
-                  <Building size={15} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: '#444444' }} />
-                  <input
-                    id="company_name"
-                    type="text"
-                    value={companyName}
-                    onChange={e => setCompanyName(e.target.value)}
-                    placeholder="Acme Corp Inc."
-                    style={{
-                      width: '100%', padding: '11px 13px 11px 38px',
-                      background: '#1a1a1a', border: '1px solid #2a2a2a',
-                      borderRadius: '8px', color: '#e8e8e8', fontSize: '14px',
-                      outline: 'none', boxSizing: 'border-box',
-                    }}
-                  />
+        {/* Center: 1px line spacer */}
+        <div style={{ flex: 1, height: '1px', background: C.divider }} />
+
+        {/* Right: Status label */}
+        <span style={{
+          fontSize: '10px',
+          fontWeight: 700,
+          color: C.divider,
+          letterSpacing: '0.14em',
+          textTransform: 'uppercase',
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}>
+          INVITE ONLY
+        </span>
+      </nav>
+
+      {/* ── Main Content ─────────────────────────────────────── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative', zIndex: 1 }}>
+
+        {/* ── Hero Headline Section ─────────────────────────── */}
+        <div style={{
+          padding: '120px 36px 48px',
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+        }}>
+          {/* Early Access label */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '16px',
+            marginBottom: '32px',
+          }}>
+            <div style={{ width: '24px', height: '1px', background: C.accent, flexShrink: 0 }} />
+            <span style={{
+              fontSize: '10px',
+              fontWeight: 700,
+              color: C.muted,
+              letterSpacing: '0.2em',
+              textTransform: 'uppercase',
+            }}>
+              Early Access — Platform
+            </span>
+          </div>
+
+          {/* Oversized headline with depth layering */}
+          <div style={{ position: 'relative', marginBottom: '48px', lineHeight: 0.85 }}>
+            {/* Layer 1 (Back) — outline text offset */}
+            <div style={{
+              position: 'absolute',
+              top: '4px',
+              left: '4px',
+              fontFamily: "'Clash Grotesk', 'General Sans', sans-serif",
+              fontSize: 'clamp(56px, 11.5vw, 160px)',
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              lineHeight: 0.85,
+              textTransform: 'uppercase',
+              WebkitTextStroke: `1px ${C.border}`,
+              color: 'transparent',
+              userSelect: 'none',
+              whiteSpace: 'nowrap',
+            }}>
+              AI HIRING
+            </div>
+            {/* Layer 2 (Front) — solid text */}
+            <div style={{
+              fontFamily: "'Clash Grotesk', 'General Sans', sans-serif",
+              fontSize: 'clamp(56px, 11.5vw, 160px)',
+              fontWeight: 700,
+              letterSpacing: '-0.03em',
+              lineHeight: 0.85,
+              textTransform: 'uppercase',
+              color: C.text,
+              position: 'relative',
+              zIndex: 1,
+              whiteSpace: 'nowrap',
+            }}>
+              AI HIRING
+            </div>
+          </div>
+
+          {/* ── Bottom Grid: Statement + Form ─────────────────── */}
+          <div style={{ borderTop: `1px solid ${C.divider}`, paddingTop: '36px' }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(12, 1fr)',
+              gap: '24px',
+              alignItems: 'start',
+            }}>
+
+              {/* Cols 1–5: Exclusivity statement */}
+              <div style={{ gridColumn: '1 / 6' }}>
+                <p style={{
+                  fontSize: '18px',
+                  fontWeight: 300,
+                  color: C.text,
+                  lineHeight: 1.65,
+                  marginBottom: '20px',
+                  letterSpacing: '0.01em',
+                }}>
+                  Enterprise-grade AI recruitment automation. Intelligent agents that source,
+                  screen, and schedule — so your team focuses on what matters.
+                </p>
+
+                {/* Status indicator */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{
+                    width: '8px', height: '8px',
+                    borderRadius: '50%',
+                    background: C.accent,
+                    animation: 'pulse-dot 2s ease-in-out infinite',
+                  }} />
+                  <span style={{
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    color: C.muted,
+                    letterSpacing: '0.12em',
+                    textTransform: 'uppercase',
+                  }}>
+                    Batch 003 Filling
+                  </span>
                 </div>
               </div>
-            </>
-          )}
 
-          {/* Email */}
-          <div style={{ marginBottom: '14px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#888888', marginBottom: '7px' }}>
-              Work Email Address
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Mail size={15} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: '#444444' }} />
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="recruiter@company.com"
-                style={{
-                  width: '100%', padding: '11px 13px 11px 38px',
-                  background: '#1a1a1a', border: '1px solid #2a2a2a',
-                  borderRadius: '8px', color: '#e8e8e8', fontSize: '14px',
-                  outline: 'none', boxSizing: 'border-box',
-                }}
-              />
+              {/* Spacer col 6 */}
+              <div style={{ gridColumn: '6 / 7' }} />
+
+              {/* Cols 7–12: Auth form */}
+              <div style={{ gridColumn: '7 / 13' }}>
+
+                {/* Tab switcher */}
+                <div style={{
+                  display: 'flex',
+                  borderBottom: `1px solid ${C.divider}`,
+                  marginBottom: '24px',
+                  gap: '0',
+                }}>
+                  {(['Sign In', 'Register'] as const).map(tab => {
+                    const active = tab === 'Sign In' ? !isRegister : isRegister
+                    return (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setIsRegister(tab === 'Register')}
+                        style={{
+                          padding: '8px 18px 12px',
+                          background: 'transparent',
+                          border: 'none',
+                          borderBottom: active ? `2px solid ${C.accent}` : '2px solid transparent',
+                          color: active ? C.text : C.faint,
+                          fontSize: '12px',
+                          fontWeight: active ? 700 : 400,
+                          letterSpacing: '0.1em',
+                          textTransform: 'uppercase',
+                          cursor: 'pointer',
+                          fontFamily: "'General Sans', 'Inter', sans-serif",
+                          transition: 'all 0.15s ease',
+                          marginBottom: '-1px',
+                        }}
+                      >
+                        {tab}
+                      </button>
+                    )
+                  })}
+                </div>
+
+                <form onSubmit={handleSubmit}>
+                  {/* Company name (register only) */}
+                  {isRegister && (
+                    <div style={{ marginBottom: '14px' }}>
+                      <label style={{
+                        display: 'block',
+                        fontSize: '9px',
+                        fontWeight: 700,
+                        color: C.faint,
+                        letterSpacing: '0.15em',
+                        textTransform: 'uppercase',
+                        marginBottom: '7px',
+                      }}>Company Name</label>
+                      <input
+                        id="company_name"
+                        type="text"
+                        value={companyName}
+                        onChange={e => setCompanyName(e.target.value)}
+                        placeholder="Acme Corp Inc."
+                        style={{ ...field }}
+                        onFocus={e => e.currentTarget.style.borderColor = C.accent}
+                        onBlur={e => e.currentTarget.style.borderColor = C.border}
+                      />
+                    </div>
+                  )}
+
+                  {/* Email */}
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      color: C.faint,
+                      letterSpacing: '0.15em',
+                      textTransform: 'uppercase',
+                      marginBottom: '7px',
+                    }}>Work Email</label>
+                    <input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      placeholder="recruiter@company.com"
+                      style={{ ...field }}
+                      onFocus={e => e.currentTarget.style.borderColor = C.accent}
+                      onBlur={e => e.currentTarget.style.borderColor = C.border}
+                    />
+                  </div>
+
+                  {/* Password */}
+                  <div style={{ marginBottom: '22px' }}>
+                    <label style={{
+                      display: 'block',
+                      fontSize: '9px',
+                      fontWeight: 700,
+                      color: C.faint,
+                      letterSpacing: '0.15em',
+                      textTransform: 'uppercase',
+                      marginBottom: '7px',
+                    }}>Password</label>
+                    <div style={{ position: 'relative' }}>
+                      <input
+                        id="password"
+                        type={showPwd ? 'text' : 'password'}
+                        value={password}
+                        onChange={e => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        style={{ ...field, paddingRight: '42px' }}
+                        onFocus={e => e.currentTarget.style.borderColor = C.accent}
+                        onBlur={e => e.currentTarget.style.borderColor = C.border}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPwd(!showPwd)}
+                        style={{
+                          position: 'absolute', right: '13px', top: '50%',
+                          transform: 'translateY(-50%)',
+                          background: 'none', border: 'none',
+                          color: C.faint, cursor: 'pointer',
+                          display: 'flex', alignItems: 'center',
+                        }}
+                      >
+                        {showPwd ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Submit — unified form block style */}
+                  <div style={{ display: 'flex', marginBottom: '10px' }}>
+                    <button
+                      id="login-submit-btn"
+                      type="submit"
+                      disabled={isPending}
+                      style={{
+                        flex: 1,
+                        padding: '12px 20px',
+                        background: isPending ? C.divider : C.accent,
+                        border: 'none',
+                        borderRadius: '4px',
+                        color: isPending ? C.faint : C.bg,
+                        fontSize: '12px',
+                        fontWeight: 700,
+                        letterSpacing: '0.12em',
+                        textTransform: 'uppercase',
+                        cursor: isPending ? 'not-allowed' : 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '8px',
+                        transition: 'all 0.15s ease',
+                        fontFamily: "'General Sans', 'Inter', sans-serif",
+                      }}
+                    >
+                      {isPending
+                        ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />{isRegister ? 'Registering...' : 'Signing in...'}</>
+                        : (isRegister ? 'Create Account' : 'Access Platform')
+                      }
+                    </button>
+                  </div>
+
+                  {/* Caption */}
+                  <p style={{
+                    fontSize: '10px',
+                    color: C.divider,
+                    letterSpacing: '0.1em',
+                    textTransform: 'uppercase',
+                    fontWeight: 500,
+                  }}>
+                    Zero spam. Pure utility.
+                  </p>
+                </form>
+
+                {/* Demo credentials */}
+                <div style={{
+                  marginTop: '24px',
+                  padding: '12px 14px',
+                  background: 'rgba(235,220,196,0.03)',
+                  border: `1px solid ${C.divider}`,
+                  borderRadius: '4px',
+                }}>
+                  <p style={{
+                    fontSize: '9px',
+                    color: C.faint,
+                    fontWeight: 700,
+                    letterSpacing: '0.15em',
+                    textTransform: 'uppercase',
+                    marginBottom: '5px',
+                  }}>
+                    Demo Access
+                  </p>
+                  <p style={{ fontSize: '12px', color: C.muted, letterSpacing: '0.03em' }}>
+                    admin@hiring.com &nbsp;/&nbsp; admin123
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
+        </div>
 
-          {/* Password */}
-          <div style={{ marginBottom: '22px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 500, color: '#888888', marginBottom: '7px' }}>
-              Password
-            </label>
-            <div style={{ position: 'relative' }}>
-              <Lock size={15} style={{ position: 'absolute', left: '13px', top: '50%', transform: 'translateY(-50%)', color: '#444444' }} />
-              <input
-                id="password"
-                type={showPwd ? 'text' : 'password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                style={{
-                  width: '100%', padding: '11px 40px 11px 38px',
-                  background: '#1a1a1a', border: '1px solid #2a2a2a',
-                  borderRadius: '8px', color: '#e8e8e8', fontSize: '14px',
-                  outline: 'none', boxSizing: 'border-box',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPwd(!showPwd)}
-                style={{
-                  position: 'absolute', right: '13px', top: '50%', transform: 'translateY(-50%)',
-                  background: 'none', border: 'none', color: '#555555', cursor: 'pointer',
-                  display: 'flex', alignItems: 'center',
-                }}
-              >
-                {showPwd ? <EyeOff size={15} /> : <Eye size={15} />}
-              </button>
-            </div>
-          </div>
-
-          {/* Submit */}
-          <button
-            id="login-submit-btn"
-            type="submit"
-            disabled={isPending}
-            style={{
-              width: '100%', padding: '12px',
-              background: isPending ? '#333333' : '#ffffff',
-              border: 'none', borderRadius: '8px',
-              color: isPending ? '#888888' : '#0a0a0a',
-              fontSize: '14px', fontWeight: 600,
-              cursor: isPending ? 'not-allowed' : 'pointer',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-              transition: 'background 0.2s, color 0.2s',
-            }}
-          >
-            {isPending ? (
-              <><Loader2 size={17} style={{ animation: 'spin 1s linear infinite' }} /> {isRegister ? 'Registering Company...' : 'Signing in...'}</>
-            ) : (isRegister ? 'Register & Access Chatbot' : 'Sign In')}
-          </button>
-        </form>
-
+        {/* ── Footer strip ─────────────────────────────────── */}
         <div style={{
-          marginTop: '20px', padding: '14px',
-          background: '#1a1a1a', borderRadius: '8px',
-          border: '1px solid #2a2a2a',
+          borderTop: `1px solid ${C.divider}`,
+          padding: '14px 36px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          position: 'relative',
+          zIndex: 1,
         }}>
-          <p style={{ fontSize: '11px', color: '#555555', textAlign: 'center', marginBottom: '5px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Demo Credentials
-          </p>
-          <p style={{ fontSize: '13px', color: '#888888', textAlign: 'center' }}>
-            admin@hiring.com / admin123
-          </p>
+          <span style={{ fontSize: '10px', color: C.divider, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            © 2026 AI Hiring Platform
+          </span>
+          <span style={{ fontSize: '10px', color: C.divider, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+            Enterprise Recruitment Automation
+          </span>
         </div>
       </div>
 
+      {/* ── Rotating Waitlist Badge (bottom-right) ────────────── */}
+      <div style={{
+        position: 'fixed',
+        bottom: '28px',
+        right: '28px',
+        width: '64px',
+        height: '64px',
+        zIndex: 100,
+      }}>
+        <svg
+          viewBox="0 0 64 64"
+          width="64"
+          height="64"
+          style={{ overflow: 'visible' }}
+        >
+          {/* Outer circle border */}
+          <circle cx="32" cy="32" r="30" fill="none" stroke={C.divider} strokeWidth="1" />
+
+          {/* Rotating text path */}
+          <g style={{ animation: 'rotate-text 12s linear infinite', transformOrigin: '32px 32px' }}>
+            <defs>
+              <path id="badge-circle-path" d="M 32,32 m -22,0 a 22,22 0 1,1 44,0 a 22,22 0 1,1 -44,0" />
+            </defs>
+            <text fontSize="7" fontWeight="700" fontFamily="'General Sans','Inter',sans-serif" fill={C.divider} letterSpacing="2.5">
+              <textPath href="#badge-circle-path">
+                WAITING LIST • WAITING LIST •&nbsp;
+              </textPath>
+            </text>
+          </g>
+        </svg>
+      </div>
+
       <style>{`
-        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @keyframes pulse-dot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50%       { opacity: 0.6; transform: scale(1.4); }
+        }
+        @keyframes rotate-text {
+          from { transform: rotate(0deg); }
+          to   { transform: rotate(360deg); }
+        }
+        @media (max-width: 768px) {
+          .hero-headline { font-size: 16vw !important; }
+        }
       `}</style>
     </div>
   )

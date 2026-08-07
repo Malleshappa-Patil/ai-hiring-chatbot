@@ -5,7 +5,7 @@ import {
   GitBranch, Activity, CheckCircle2, XCircle, AlertCircle, Loader2,
   Briefcase, RefreshCw, ClipboardList, FileText, UserCheck, Send,
   Eye, Search, Users, Video, UserPlus, AlertTriangle, ChevronRight,
-  X, Zap, Brain, Bot, RotateCcw, ArrowRightLeft
+  X, Zap, Brain, Bot, RotateCcw, ArrowRightLeft, Circle
 } from 'lucide-react'
 import type { JobStatus, AgentLog } from '@/types'
 import toast from 'react-hot-toast'
@@ -22,8 +22,8 @@ interface NodeDef {
   description: string
   icon: any
   subSteps: string[]
-  col: number   // column index (x)
-  row: number   // row index (y)
+  col: number   // 0 .. 4
+  row: number   // 0 .. 3
 }
 
 interface EdgeDef {
@@ -34,239 +34,156 @@ interface EdgeDef {
 }
 
 /* ─────────────────────────────────────────────────────────
-   LAYOUT STRATEGY
-   We use a 5-column grid:
-     Col 0  – Loop / feedback paths (left channel)
-     Col 1  – Monitoring / JD optimization side lane
-     Col 2  – Main pipeline spine (centre)
-     Col 3  – Parallel review / renegotiation lane
-     Col 4  – Rejection / close lane (right channel)
+   GRAPH LAYOUT STRATEGY (5 Columns × 4 Rows Phase Grid)
+   Phase 1 (Row 0): Strategy & JD Drafting -> Approval -> Sourcing
+   Phase 2 (Row 1): Wait -> Monitoring -> JD Optimisation Loop
+   Phase 3 (Row 2): AI Screening -> Shortlist Review -> Interviews
+   Phase 4 (Row 3): Offer Generation -> Onboarding / Renegotiation / Rejection
    ───────────────────────────────────────────────────────── */
 
 const NODES: NodeDef[] = [
-  /* ── Main spine ────────────────────────────────────────── */
+  /* Phase 1: Initiation & JD Approval (Row 0) */
   {
-    id: 'supervisor',
-    title: 'Workflow Orchestration',
-    shortTitle: 'Supervisor',
-    agentName: 'Supervisor Agent',
-    agentType: 'ai',
-    description: 'Orchestrates the entire recruitment pipeline. Routes tasks, manages memory, and handles exceptions.',
-    icon: Brain,
-    col: 2, row: 0,
+    id: 'supervisor', title: 'Workflow Orchestration', shortTitle: 'Supervisor',
+    agentName: 'Supervisor Agent', agentType: 'ai', icon: Brain, col: 0, row: 0,
+    description: 'Orchestrates the recruitment pipeline, routes tasks & manages session state.',
     subSteps: ['Parse hiring goal & parameters', 'Initialise workflow session', 'Delegate to Planning Agent'],
   },
   {
-    id: 'planning',
-    title: 'Recruitment Planning',
-    shortTitle: 'Planning',
-    agentName: 'Planning Agent',
-    agentType: 'ai',
-    description: 'Converts recruiting goals into structured pipeline milestones and target timelines.',
-    icon: ClipboardList,
-    col: 2, row: 1,
-    subSteps: ['Analyse job requirements & timeline', 'Formulate stage sequence & targets', 'Save plan to short-term memory'],
+    id: 'planning', title: 'Recruitment Planning', shortTitle: 'Planning',
+    agentName: 'Planning Agent', agentType: 'ai', icon: ClipboardList, col: 1, row: 0,
+    description: 'Converts recruiting goals into pipeline milestones & target timelines.',
+    subSteps: ['Analyse job requirements & timeline', 'Formulate stage sequence & targets', 'Save plan to memory'],
   },
   {
-    id: 'jd_generation',
-    title: 'JD Drafting',
-    shortTitle: 'JD Drafting',
-    agentName: 'JD Agent',
-    agentType: 'ai',
-    description: 'Generates AI-optimised Job Descriptions using LLM chain with skills DB lookup.',
-    icon: FileText,
-    col: 2, row: 2,
-    subSteps: ['Search skills database', 'Invoke generative LLM chain', 'Parse draft into standard sections'],
+    id: 'jd_generation', title: 'JD Drafting', shortTitle: 'JD Drafting',
+    agentName: 'JD Agent', agentType: 'ai', icon: FileText, col: 2, row: 0,
+    description: 'Generates AI-optimised Job Descriptions using LLM chain & skills DB lookup.',
+    subSteps: ['Search skills database', 'Invoke generative LLM chain', 'Parse draft into sections'],
   },
   {
-    id: 'human_approval',
-    title: 'JD Review & Approval',
-    shortTitle: 'JD Approval',
-    agentName: 'Human Recruiter',
-    agentType: 'human',
-    description: 'Recruiter reviews the JD draft. On rejection, JD Agent is re-invoked with feedback — loop continues until approved.',
-    icon: UserCheck,
-    col: 2, row: 3,
-    subSteps: ['Notify hiring manager of JD draft', 'Capture edits / feedback', 'Unlock sourcing upon approval'],
+    id: 'human_approval', title: 'JD Review & Approval', shortTitle: 'JD Approval',
+    agentName: 'Human Recruiter', agentType: 'human', icon: UserCheck, col: 3, row: 0,
+    description: 'Recruiter reviews the JD draft. On rejection, JD Agent is re-invoked with feedback.',
+    subSteps: ['Notify manager of JD draft', 'Capture edits / feedback', 'Unlock sourcing upon approval'],
   },
   {
-    id: 'sourcing',
-    title: 'Job Posting & Sourcing',
-    shortTitle: 'Sourcing',
-    agentName: 'Sourcing Agent',
-    agentType: 'ai',
-    description: 'Publishes approved JD to LinkedIn, Indeed, Naukri, Wellfound and company careers portal.',
-    icon: Send,
-    col: 2, row: 4,
-    subSteps: ['Generate board-specific metadata', 'Submit listings to job board APIs', 'Save initial candidate profile records'],
+    id: 'sourcing', title: 'Job Posting & Sourcing', shortTitle: 'Sourcing',
+    agentName: 'Sourcing Agent', agentType: 'ai', icon: Send, col: 4, row: 0,
+    description: 'Publishes approved JD to job boards and company portal.',
+    subSteps: ['Generate board metadata', 'Submit listings to job board APIs', 'Save initial profile records'],
+  },
+
+  /* Phase 2: Sourcing, Monitoring & Loop (Row 1) */
+  {
+    id: 'wait_primary', title: 'Wait Open Days', shortTitle: 'Wait (Open Days)',
+    agentName: 'Scheduler', agentType: 'ai', icon: RotateCcw, col: 4, row: 1,
+    description: 'System waits for applications to accumulate before evaluating threshold.',
+    subSteps: ['Hold pipeline for open window', 'Monitor application stream passively'],
   },
   {
-    id: 'wait_primary',
-    title: 'Wait 7 Days',
-    shortTitle: 'Wait (7d)',
-    agentName: 'Scheduler',
-    agentType: 'ai',
-    description: 'System waits 7 days for applications to accumulate before evaluating threshold.',
-    icon: RotateCcw,
-    col: 2, row: 5,
-    subSteps: ['Hold pipeline for 7 days', 'Monitor application stream passively'],
-  },
-  {
-    id: 'monitoring',
-    title: 'Application Volume Check',
-    shortTitle: 'Monitoring',
-    agentName: 'Monitoring Agent',
-    agentType: 'ai',
+    id: 'monitoring', title: 'Application Volume Check', shortTitle: 'Monitoring',
+    agentName: 'Monitoring Agent', agentType: 'ai', icon: Eye, col: 3, row: 1,
     description: 'Checks if applications ≥ threshold (10). If below threshold, triggers JD optimisation loop.',
-    icon: Eye,
-    col: 2, row: 6,
-    subSteps: ['Track applicant counts vs. target', 'Analyse application velocity trends', 'Decide: threshold reached or loop'],
+    subSteps: ['Track applicant counts vs. target', 'Analyse velocity trends', 'Decide: threshold reached or loop'],
   },
   {
-    id: 'jd_optimization',
-    title: 'JD Optimisation',
-    shortTitle: 'JD Optimise',
-    agentName: 'JD Optimisation Agent',
-    agentType: 'ai',
-    description: 'Improves JD with keywords, visibility tweaks and market benchmark data when volume is below threshold.',
-    icon: ArrowRightLeft,
-    col: 0, row: 6,
-    subSteps: ['Analyse low-response patterns', 'Add SEO keywords & improve clarity', 'Benchmark against market JDs'],
+    id: 'jd_optimization', title: 'JD Optimisation', shortTitle: 'JD Optimise',
+    agentName: 'JD Optimisation Agent', agentType: 'ai', icon: ArrowRightLeft, col: 2, row: 1,
+    description: 'Improves JD with keywords & market benchmark data when volume is low.',
+    subSteps: ['Analyse low-response patterns', 'Add SEO keywords', 'Benchmark against market JDs'],
   },
   {
-    id: 'repost',
-    title: 'Repost Updated JD',
-    shortTitle: 'Repost JD',
-    agentName: 'Sourcing Agent',
-    agentType: 'ai',
-    description: 'Re-publishes the optimised JD across all job boards after each optimisation cycle.',
-    icon: Send,
-    col: 0, row: 5,
-    subSteps: ['Push updated JD to all boards', 'Reset application collection window'],
+    id: 'repost', title: 'Repost Updated JD', shortTitle: 'Repost JD',
+    agentName: 'Sourcing Agent', agentType: 'ai', icon: Send, col: 1, row: 1,
+    description: 'Re-publishes optimised JD across all job boards after each cycle.',
+    subSteps: ['Push updated JD to all boards', 'Reset collection window'],
   },
   {
-    id: 'wait_loop',
-    title: 'Wait 48h (Loop)',
-    shortTitle: 'Wait (48h)',
-    agentName: 'Scheduler',
-    agentType: 'ai',
-    description: 'After reposting, system waits 48 hours before re-evaluating application threshold.',
-    icon: RotateCcw,
-    col: 0, row: 4,
+    id: 'wait_loop', title: 'Wait 48h (Loop)', shortTitle: 'Wait (48h)',
+    agentName: 'Scheduler', agentType: 'ai', icon: RotateCcw, col: 0, row: 1,
+    description: 'After reposting, system waits 48 hours before re-evaluating volume.',
     subSteps: ['Hold 48 hours for new applications', 'Trigger monitoring check again'],
   },
+
+  /* Phase 3: AI Screening & Interviews (Row 2) */
   {
-    id: 'screening',
-    title: 'Resume Screening',
-    shortTitle: 'Screening',
-    agentName: 'Screening Agent',
-    agentType: 'ai',
-    description: 'AI parses and scores all resumes. Ranks candidates against JD match criteria.',
-    icon: Search,
-    col: 2, row: 7,
+    id: 'screening', title: 'Resume Screening', shortTitle: 'Screening',
+    agentName: 'Screening Agent', agentType: 'ai', icon: Search, col: 3, row: 2,
+    description: 'AI parses and scores all resumes against JD match criteria.',
     subSteps: ['Parse incoming resume PDFs', 'Calculate ATS match scores', 'Generate screening justification'],
   },
   {
-    id: 'human_review',
-    title: 'Shortlist Validation',
-    shortTitle: 'Shortlist Review',
-    agentName: 'Human Recruiter',
-    agentType: 'human',
-    description: 'Recruiter validates AI shortlist scores and approves candidates for interview stage.',
-    icon: Users,
-    col: 2, row: 8,
+    id: 'human_review', title: 'Shortlist Validation', shortTitle: 'Shortlist Review',
+    agentName: 'Human Recruiter', agentType: 'human', icon: Users, col: 2, row: 2,
+    description: 'Recruiter validates AI shortlist scores & approves candidates for interviews.',
     subSteps: ['Present AI shortlists & reasoning', 'Allow recruiter overrides', 'Trigger calendar scheduling'],
   },
   {
-    id: 'interviewing',
-    title: 'Interview Coordination',
-    shortTitle: 'Interviews',
-    agentName: 'Interview Agent',
-    agentType: 'ai',
-    description: 'Schedules technical + HR interviews, runs AI evaluation simulations, compiles feedback.',
-    icon: Video,
-    col: 2, row: 9,
+    id: 'interviewing', title: 'Interview Coordination', shortTitle: 'Interviews',
+    agentName: 'Interview Agent', agentType: 'ai', icon: Video, col: 1, row: 2,
+    description: 'Schedules technical & HR interviews, runs evaluation simulations.',
     subSteps: ['Generate meeting schedules', 'Run evaluation simulations', 'Compile feedback & scores'],
   },
-  /* ── Candidate selection decision ──────────────────────── */
+
+  /* Phase 4: Final Selection, Offers & Onboarding (Row 3) */
   {
-    id: 'candidate_selected',
-    title: 'Offer Letter Generation',
-    shortTitle: 'Send Offer',
-    agentName: 'Offer Agent',
-    agentType: 'ai',
-    description: 'Generates personalised offer letter and sends it to the selected candidate.',
-    icon: FileText,
-    col: 2, row: 10,
-    subSteps: ['Compose offer letter with LLM', 'Attach compensation & benefits', 'Send via email service'],
+    id: 'candidate_selected', title: 'Offer Letter Generation', shortTitle: 'Send Offer',
+    agentName: 'Offer Agent', agentType: 'ai', icon: FileText, col: 1, row: 3,
+    description: 'Generates personalised offer letter & sends to candidate.',
+    subSteps: ['Compose offer letter with LLM', 'Attach comp & benefits', 'Send via email service'],
   },
   {
-    id: 'rejection_email',
-    title: 'Rejection Notification',
-    shortTitle: 'Rejection Email',
-    agentName: 'Comms Agent',
-    agentType: 'ai',
-    description: 'Sends a personalised regret email to non-selected candidates.',
-    icon: XCircle,
-    col: 4, row: 10,
-    subSteps: ['Generate personalised regret email', 'Send via email service', 'Update candidate status to Closed'],
-  },
-  /* ── Offer acceptance decision ──────────────────────────── */
-  {
-    id: 'offer_accepted',
-    title: 'Onboarding Initiation',
-    shortTitle: 'Onboarding',
-    agentName: 'Onboarding Agent',
-    agentType: 'ai',
-    description: 'Prepares welcome package, employee record, IT accounts, and sends welcome kit.',
-    icon: UserPlus,
-    col: 2, row: 11,
-    subSteps: ['Collect documents & verification', 'Create employee record & ID', 'Trigger IT asset allocation & welcome kit'],
+    id: 'offer_accepted', title: 'Onboarding Initiation', shortTitle: 'Onboarding',
+    agentName: 'Onboarding Agent', agentType: 'ai', icon: UserPlus, col: 0, row: 3,
+    description: 'Prepares welcome package, employee record, IT accounts, and welcome kit.',
+    subSteps: ['Collect verification docs', 'Create employee record', 'Trigger IT asset allocation'],
   },
   {
-    id: 'renegotiation',
-    title: 'Offer Renegotiation',
-    shortTitle: 'Renegotiation',
-    agentName: 'Renegotiation Agent',
-    agentType: 'ai',
-    description: 'Negotiates salary and benefits with the candidate. On acceptance → Onboarding. On final rejection → Close.',
-    icon: ArrowRightLeft,
-    col: 4, row: 11,
-    subSteps: ['Initiate salary/benefits negotiation', 'Loop until acceptance or rejection', 'Route to Onboarding or Close'],
+    id: 'renegotiation', title: 'Offer Renegotiation', shortTitle: 'Renegotiation',
+    agentName: 'Renegotiation Agent', agentType: 'ai', icon: ArrowRightLeft, col: 2, row: 3,
+    description: 'Negotiates salary & benefits with candidate on counter-offer.',
+    subSteps: ['Initiate negotiation', 'Loop until decision', 'Route to Onboarding or Close'],
+  },
+  {
+    id: 'rejection_email', title: 'Rejection Notification', shortTitle: 'Rejection Email',
+    agentName: 'Comms Agent', agentType: 'ai', icon: XCircle, col: 3, row: 3,
+    description: 'Sends personalised regret email to non-selected candidates.',
+    subSteps: ['Generate regret email', 'Send via email service', 'Update candidate status'],
   },
 ]
 
 /* ─── Edges (directed, typed) ────────────────────────────── */
 const EDGES: EdgeDef[] = [
-  // Main forward spine
+  // Row 0: Phase 1 Forward Pipeline
   { from: 'supervisor',       to: 'planning',           type: 'forward' },
   { from: 'planning',         to: 'jd_generation',      type: 'forward' },
   { from: 'jd_generation',    to: 'human_approval',     type: 'forward' },
-  // JD approval loop-back
-  { from: 'human_approval',   to: 'jd_generation',      type: 'loop',      label: 'Rejected → revise' },
-  // Approval → sourcing
-  { from: 'human_approval',   to: 'sourcing',           type: 'branch_yes', label: 'Approved ✓' },
+  { from: 'human_approval',   to: 'jd_generation',      type: 'loop',        label: 'Rejected' },
+  { from: 'human_approval',   to: 'sourcing',           type: 'branch_yes',   label: 'Approved ✓' },
+
+  // Phase 1 -> Phase 2 Transition
   { from: 'sourcing',         to: 'wait_primary',       type: 'forward' },
+
+  // Row 1: Phase 2 Monitoring & Loop
   { from: 'wait_primary',     to: 'monitoring',         type: 'forward' },
-  // Monitoring decision
-  { from: 'monitoring',       to: 'screening',          type: 'branch_yes', label: '≥ Threshold ✓' },
-  { from: 'monitoring',       to: 'jd_optimization',   type: 'branch_no',  label: '< Threshold ✗' },
-  // Optimisation loop
+  { from: 'monitoring',       to: 'screening',          type: 'branch_yes',   label: '≥ Threshold ✓' },
+  { from: 'monitoring',       to: 'jd_optimization',   type: 'branch_no',    label: '< Threshold ✗' },
   { from: 'jd_optimization',  to: 'repost',             type: 'loop' },
   { from: 'repost',           to: 'wait_loop',          type: 'loop' },
-  { from: 'wait_loop',        to: 'monitoring',         type: 'feedback',   label: 'Re-check' },
-  // Screening → interview pipeline
+  { from: 'wait_loop',        to: 'monitoring',         type: 'feedback',     label: 'Re-check' },
+
+  // Phase 2 -> Phase 3 Pipeline
   { from: 'screening',        to: 'human_review',       type: 'forward' },
   { from: 'human_review',     to: 'interviewing',       type: 'forward' },
-  // Interview decision
-  { from: 'interviewing',     to: 'candidate_selected', type: 'branch_yes', label: 'Selected ✓' },
-  { from: 'interviewing',     to: 'rejection_email',    type: 'branch_no',  label: 'Rejected ✗' },
-  // Offer decisions
-  { from: 'candidate_selected', to: 'offer_accepted',  type: 'branch_yes', label: 'Accepted ✓' },
-  { from: 'candidate_selected', to: 'renegotiation',   type: 'branch_no',  label: 'Counter ✗' },
-  // Renegotiation loop
-  { from: 'renegotiation',    to: 'offer_accepted',     type: 'branch_yes', label: 'Accepted ✓' },
-  { from: 'renegotiation',    to: 'candidate_selected', type: 'feedback',   label: 'Loop back' },
+
+  // Phase 3 -> Phase 4 Decisions
+  { from: 'interviewing',     to: 'candidate_selected', type: 'branch_yes',   label: 'Selected ✓' },
+  { from: 'interviewing',     to: 'rejection_email',    type: 'branch_no',    label: 'Rejected ✗' },
+  { from: 'candidate_selected', to: 'offer_accepted',  type: 'branch_yes',   label: 'Accepted ✓' },
+  { from: 'candidate_selected', to: 'renegotiation',   type: 'branch_no',    label: 'Counter ✗' },
+  { from: 'renegotiation',    to: 'offer_accepted',     type: 'branch_yes',   label: 'Accepted ✓' },
+  { from: 'renegotiation',    to: 'candidate_selected', type: 'feedback',     label: 'Loop back' },
 ]
 
 /* ─── Stage progression order ────────────────────────────── */
@@ -279,9 +196,9 @@ const STAGE_ORDER = [
 
 /* ─── Status maps ────────────────────────────────────────── */
 const jobStatusColor: Record<JobStatus, string> = {
-  draft: '#64748b', generating_jd: '#6366f1', pending_approval: '#f59e0b',
-  approved: '#10b981', published: '#3b82f6', monitoring: '#8b5cf6',
-  screening: '#ec4899', interviewing: '#14b8a6', onboarding: '#a855f7', closed: '#ef4444',
+  draft: '#7A6A5E', generating_jd: '#DC9F85', pending_approval: '#DC9F85',
+  approved: '#8ab4a0', published: '#B6A596', monitoring: '#B6A596',
+  screening: '#DC9F85', interviewing: '#8ab4a0', onboarding: '#B6A596', closed: '#7A6A5E',
 }
 const jobStatusLabel: Record<JobStatus, string> = {
   draft: 'Draft', generating_jd: 'JD Generation', pending_approval: 'Pending Approval',
@@ -290,15 +207,15 @@ const jobStatusLabel: Record<JobStatus, string> = {
 }
 
 /* ─── Layout constants ───────────────────────────────────── */
-const NW = 210    // node width  ← bigger
-const NH = 90     // node height ← bigger
-const COL_W = 280 // column pitch ← wider gap between columns
-const ROW_H = 130 // row pitch   ← taller gap between rows
-const PAD_X = 50
-const PAD_Y = 56
+const NW = 220    // node width
+const NH = 90     // node height
+const COL_W = 270 // column pitch
+const ROW_H = 150 // row pitch
+const PAD_X = 60
+const PAD_Y = 60
 
 const COLS = 5
-const ROWS = 12
+const ROWS = 4
 
 const colX = (c: number) => PAD_X + c * COL_W
 const rowY = (r: number) => PAD_Y + r * ROW_H
@@ -309,96 +226,90 @@ const CANVAS_H = ROWS * ROW_H + PAD_Y * 2
 function edgeStyle(type: EdgeDef['type'], fromState: StageState) {
   const active = ['completed', 'running'].includes(fromState)
   switch (type) {
-    case 'forward':     return { color: active ? '#10b981' : 'rgba(255,255,255,0.16)', dash: 'none',      width: active ? 2.5 : 1.5, marker: active ? 'arr-done'   : 'arr-idle' }
-    case 'branch_yes':  return { color: active ? '#10b981' : 'rgba(255,255,255,0.16)', dash: 'none',      width: active ? 2.5 : 1.5, marker: active ? 'arr-done'   : 'arr-idle' }
-    case 'branch_no':   return { color: active ? '#f59e0b' : 'rgba(255,255,255,0.14)', dash: '6 4',      width: active ? 2   : 1.5, marker: active ? 'arr-amber'  : 'arr-idle' }
-    case 'loop':        return { color: active ? '#f97316' : 'rgba(255,255,255,0.14)', dash: '6 4',      width: active ? 2   : 1.5, marker: active ? 'arr-orange' : 'arr-idle' }
-    case 'feedback':    return { color: active ? '#8b5cf6' : 'rgba(255,255,255,0.14)', dash: '8 4 2 4', width: active ? 2   : 1.5, marker: active ? 'arr-purple' : 'arr-idle' }
-    default:            return { color: 'rgba(255,255,255,0.12)', dash: 'none', width: 1.5, marker: 'arr-idle' }
+    case 'forward':     return { color: active ? '#DC9F85' : 'rgba(102,71,59,0.5)', dash: 'none',      width: active ? 2   : 1.2, marker: active ? 'arr-accent' : 'arr-idle' }
+    case 'branch_yes':  return { color: active ? '#8ab4a0' : 'rgba(102,71,59,0.5)', dash: 'none',      width: active ? 2   : 1.2, marker: active ? 'arr-green'  : 'arr-idle' }
+    case 'branch_no':   return { color: active ? '#DC9F85' : 'rgba(102,71,59,0.4)', dash: '6 4',      width: active ? 1.5 : 1.2, marker: active ? 'arr-accent' : 'arr-idle' }
+    case 'loop':        return { color: active ? '#B6A596' : 'rgba(102,71,59,0.4)', dash: '6 4',      width: active ? 1.5 : 1.2, marker: active ? 'arr-muted'  : 'arr-idle' }
+    case 'feedback':    return { color: active ? '#DC9F85' : 'rgba(102,71,59,0.4)', dash: '8 4 2 4', width: active ? 1.5 : 1.2, marker: active ? 'arr-accent' : 'arr-idle' }
+    default:            return { color: 'rgba(102,71,59,0.5)', dash: 'none', width: 1.2, marker: 'arr-idle' }
   }
 }
 
 /* ─── Edge path routing ──────────────────────────────────── */
 function buildEdgePath(from: NodeDef, to: NodeDef, type: EdgeDef['type']): string {
   const fx = colX(from.col) + NW / 2
-  const fy = rowY(from.row) + NH
+  const fy = rowY(from.row) + NH / 2
   const tx = colX(to.col) + NW / 2
-  const ty = rowY(to.row)
+  const ty = rowY(to.row) + NH / 2
 
-  // Same column: simple cubic bezier top-to-bottom
+  // 1. Horizontal flow on same row
+  if (from.row === to.row) {
+    if (from.col < to.col) {
+      const x1 = colX(from.col) + NW
+      const x2 = colX(to.col)
+      return `M ${x1} ${fy} L ${x2} ${ty}`
+    } else {
+      const x1 = colX(from.col)
+      const x2 = colX(to.col) + NW
+      return `M ${x1} ${fy} L ${x2} ${ty}`
+    }
+  }
+
+  // 2. Vertical flow on same column
   if (from.col === to.col) {
     if (from.row < to.row) {
-      const cy = (fy + ty) / 2
-      return `M ${fx} ${fy} C ${fx} ${cy}, ${tx} ${cy}, ${tx} ${ty}`
+      const y1 = rowY(from.row) + NH
+      const y2 = rowY(to.row)
+      return `M ${fx} ${y1} L ${tx} ${y2}`
+    } else {
+      const y1 = rowY(from.row)
+      const y2 = rowY(to.row) + NH
+      return `M ${fx} ${y1} L ${tx} ${y2}`
     }
-    // Loop-back in same column — arc wide to the right so it clears the node
-    const loopX = colX(from.col) + NW + 60
-    return `M ${fx} ${fy} C ${loopX} ${fy}, ${loopX} ${ty}, ${tx} ${ty}`
   }
 
-  // For loop/feedback going RIGHT → LEFT (e.g. monitoring → jd_optimization)
-  if ((type === 'loop' || type === 'feedback' || type === 'branch_no') && from.col > to.col) {
-    // Exit from the left side centre of from-node
-    const exitX = colX(from.col)
-    const exitY = rowY(from.row) + NH / 2
-    // Curve outward to the left channel then into top of to-node
-    const pullX = exitX - 80
-    return `M ${exitX} ${exitY} C ${pullX} ${exitY}, ${pullX} ${ty + NH / 2}, ${tx} ${ty}`
+  // 3. Special case: loop back from wait_loop (0,1) to monitoring (3,1)
+  if (from.id === 'wait_loop' && to.id === 'monitoring') {
+    const x1 = colX(from.col) + NW / 2
+    const y1 = rowY(from.row)
+    const x2 = colX(to.col) + NW / 2
+    const y2 = rowY(to.row)
+    const arcY = rowY(from.row) - 40
+    return `M ${x1} ${y1} C ${x1} ${arcY}, ${x2} ${arcY}, ${x2} ${y2}`
   }
 
-  // For loop/feedback going LEFT → RIGHT (e.g. wait_loop → monitoring)
-  if ((type === 'loop' || type === 'feedback') && from.col < to.col) {
-    const exitX = colX(from.col) + NW
-    const exitY = rowY(from.row) + NH / 2
-    const pullX = exitX + 80
-    return `M ${exitX} ${exitY} C ${pullX} ${exitY}, ${pullX} ${ty + NH / 2}, ${tx} ${ty}`
+  // 4. General diagonal flow (bezier)
+  if (from.row < to.row) {
+    const y1 = rowY(from.row) + NH
+    const y2 = rowY(to.row)
+    const midY = (y1 + y2) / 2
+    return `M ${fx} ${y1} C ${fx} ${midY}, ${tx} ${midY}, ${tx} ${y2}`
+  } else {
+    const y1 = rowY(from.row)
+    const y2 = rowY(to.row) + NH
+    const midY = (y1 + y2) / 2
+    return `M ${fx} ${y1} C ${fx} ${midY}, ${tx} ${midY}, ${tx} ${y2}`
   }
-
-  // branch_no going LEFT → RIGHT or general cross-column forward
-  const midY = (fy + ty) / 2
-  return `M ${fx} ${fy} C ${fx} ${midY}, ${tx} ${midY}, ${tx} ${ty}`
 }
 
-/* ─── Midpoint for edge labels ─────────────────────────────
-   For cross-column edges the label should sit at the horizontal
-   midpoint of the path, not the average of endpoints.          */
 function edgeMid(from: NodeDef, to: NodeDef, type: EdgeDef['type']): { x: number; y: number } {
+  if (from.id === 'wait_loop' && to.id === 'monitoring') {
+    return { x: (colX(from.col) + colX(to.col)) / 2 + NW / 2, y: rowY(from.row) - 40 }
+  }
   const fx = colX(from.col) + NW / 2
-  const fy = rowY(from.row) + NH
+  const fy = rowY(from.row) + NH / 2
   const tx = colX(to.col) + NW / 2
-  const ty = rowY(to.row)
-
-  if (from.col === to.col) {
-    // Same column — put label beside the arc, offset to the right
-    if (from.row > to.row) {
-      return { x: colX(from.col) + NW + 72, y: (fy + ty) / 2 }
-    }
-    return { x: (fx + tx) / 2, y: (fy + ty) / 2 }
-  }
-
-  // Cross-column — place label near the horizontal transit midpoint
-  if ((type === 'loop' || type === 'feedback' || type === 'branch_no') && from.col > to.col) {
-    const exitX = colX(from.col)
-    const pullX = exitX - 80
-    // quarter-point on the bezier (roughly where it bends)
-    return { x: (exitX + pullX) / 2, y: rowY(from.row) + NH / 2 - 12 }
-  }
-  if ((type === 'loop' || type === 'feedback') && from.col < to.col) {
-    const exitX = colX(from.col) + NW
-    const pullX = exitX + 80
-    return { x: (exitX + pullX) / 2, y: rowY(from.row) + NH / 2 - 12 }
-  }
-
+  const ty = rowY(to.row) + NH / 2
   return { x: (fx + tx) / 2, y: (fy + ty) / 2 }
 }
 
 function stateColors(state: StageState) {
   switch (state) {
-    case 'completed':        return { stroke: '#10b981', bg: 'rgba(16,185,129,0.08)',  border: 'rgba(16,185,129,0.35)', text: '#34d399', badge: 'Completed'       }
-    case 'running':          return { stroke: '#6366f1', bg: 'rgba(99,102,241,0.12)',  border: 'rgba(99,102,241,0.45)', text: '#818cf8', badge: 'Running'         }
-    case 'waiting_approval': return { stroke: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.35)', text: '#fbbf24', badge: 'Awaiting Approval'}
-    case 'failed':           return { stroke: '#ef4444', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.35)',  text: '#f87171', badge: 'Failed'           }
-    default:                 return { stroke: 'rgba(255,255,255,0.15)', bg: '#0f172a', border: 'rgba(255,255,255,0.08)', text: '#64748b', badge: 'Pending'        }
+    case 'completed':        return { stroke: '#8ab4a0', bg: 'rgba(107,158,126,0.1)',  border: 'rgba(107,158,126,0.4)', text: '#8ab4a0', badge: 'Completed'        }
+    case 'running':          return { stroke: '#DC9F85', bg: 'rgba(220,159,133,0.12)', border: '#DC9F85',             text: '#DC9F85', badge: 'Running'          }
+    case 'waiting_approval': return { stroke: '#DC9F85', bg: 'rgba(220,159,133,0.1)',  border: 'rgba(220,159,133,0.4)',text: '#EBDCC4', badge: 'Awaiting Approval' }
+    case 'failed':           return { stroke: '#B6A596', bg: 'rgba(182,165,150,0.08)', border: '#66473B',             text: '#B6A596', badge: 'Failed'            }
+    default:                 return { stroke: '#7A6A5E', bg: '#1E1A18',               border: '#35211A',             text: '#7A6A5E', badge: 'Pending'           }
   }
 }
 
@@ -408,8 +319,8 @@ export default function WorkflowMonitor() {
   const [selectedNode, setSelectedNode] = useState<NodeDef | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [dashOffset, setDashOffset] = useState(0)
-  const [zoom, setZoom] = useState(0.58)
-  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [zoom, setZoom] = useState(0.82)
+  const [pan, setPan] = useState({ x: 20, y: 30 })
   const [isPanning, setIsPanning] = useState(false)
   const [activeTab, setActiveTab] = useState<'graph' | 'logs'>('graph')
   const panStart = useRef({ mx: 0, my: 0, px: 0, py: 0 })
@@ -422,7 +333,6 @@ export default function WorkflowMonitor() {
     if (jobs?.items?.length && !selectedJobId) setSelectedJobId(jobs.items[0].id)
   }, [jobs, selectedJobId])
 
-  // Use retry:false so 404 errors don't spam retries; treat missing workflow as null gracefully
   const { data: workflowState, isError: workflowError } = useQuery({
     queryKey: ['workflow-status', selectedJobId],
     queryFn: () => workflowApi.status(selectedJobId),
@@ -449,13 +359,11 @@ export default function WorkflowMonitor() {
     onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to retry'),
   })
 
-  // Animate dashes
   useEffect(() => {
     const id = setInterval(() => setDashOffset(v => (v - 1) % 24), 50)
     return () => clearInterval(id)
   }, [])
 
-  // Wheel zoom centred on cursor
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault()
     const rect = canvasRef.current!.getBoundingClientRect()
@@ -463,7 +371,7 @@ export default function WorkflowMonitor() {
     const my = e.clientY - rect.top
     const delta = e.deltaY > 0 ? 0.9 : 1.1
     setZoom(z => {
-      const next = Math.min(2.5, Math.max(0.2, z * delta))
+      const next = Math.min(2.5, Math.max(0.3, z * delta))
       const scale = next / z
       setPan(p => ({ x: mx - scale * (mx - p.x), y: my - scale * (my - p.y) }))
       return next
@@ -487,17 +395,19 @@ export default function WorkflowMonitor() {
   const currentJob = jobs?.items?.find(j => j.id === selectedJobId)
   const openDays = currentJob?.application_open_days ?? workflowState?.state_data?.application_open_days ?? 7
 
-  const mappedNodes = NODES.map(node => {
+  const mappedNodes = NODES.map((node, index) => {
+    const stepNum = index + 1
     if (node.id === 'wait_primary') {
       return {
         ...node,
+        stepNum,
         title: `Wait ${openDays} Days`,
         shortTitle: `Wait (${openDays}d)`,
         description: `System waits ${openDays} days for applications to accumulate before evaluating threshold.`,
         subSteps: [`Hold pipeline for ${openDays} days`, 'Monitor application stream passively']
       }
     }
-    return node
+    return { ...node, stepNum }
   })
 
   const getStatus = (id: string): StageState => {
@@ -521,7 +431,6 @@ export default function WorkflowMonitor() {
     const s = getStatus(id)
     if (s !== 'idle') return s
 
-    // If the node itself is idle, check if any subsequent node is active/completed
     const idx = STAGE_ORDER.indexOf(id)
     if (idx !== -1) {
       for (let i = idx + 1; i < STAGE_ORDER.length; i++) {
@@ -535,7 +444,6 @@ export default function WorkflowMonitor() {
     return 'idle'
   }
 
-  // Comprehensive agent-name → node-id mapping (covers all agent names the backend emits)
   const LOG_NAME_MAP: Record<string, string> = {
     'Supervisor Agent': 'supervisor',
     'Planning Agent': 'planning',
@@ -560,14 +468,12 @@ export default function WorkflowMonitor() {
         l.action.includes('human_review')
       )
     }
-    // Reverse lookup: find the agent name for this node id
     const agentName = Object.entries(LOG_NAME_MAP).find(([, nodeId]) => nodeId === id)?.[0]
     if (!agentName) return []
     return logs.filter(l => l.agent_name === agentName)
   }
 
   const getSubStep = (state: StageState, nodeLogs: AgentLog[], idx: number) => {
-    // If we have real logs, all sub-steps are considered done for completed nodes
     if (state === 'completed') return 'done'
     if (state === 'idle') return 'pending'
     if (state === 'failed') return idx === 0 ? 'done' : idx === 1 ? 'failed' : 'pending'
@@ -580,7 +486,6 @@ export default function WorkflowMonitor() {
   const progress = mappedNodes.length ? Math.round((completedCount / mappedNodes.length) * 100) : 0
   const isStuckInterview = workflowState?.current_stage === 'interviewing' && workflowState?.agent_statuses?.['interview'] === 'running'
 
-  // All logs sorted newest-first for timeline view
   const allLogs: AgentLog[] = logs ? [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) : []
 
   const formatTs = (ts: string) => {
@@ -590,73 +495,84 @@ export default function WorkflowMonitor() {
     } catch { return ts }
   }
 
-  // Edge type legend colours
   const EDGE_LEGEND = [
-    { color: '#10b981', dash: 'none',     label: 'Forward flow' },
-    { color: '#f59e0b', dash: '6px 4px',  label: 'Conditional branch' },
-    { color: '#f97316', dash: '5px 4px',  label: 'Optimisation loop' },
-    { color: '#ec4899', dash: '8px 4px',  label: 'Feedback / re-check' },
+    { color: '#DC9F85', dash: 'none',     label: 'Forward flow' },
+    { color: '#8ab4a0', dash: 'none',     label: 'Conditional branch' },
+    { color: '#B6A596', dash: '6px 4px',  label: 'Optimisation loop' },
+    { color: '#DC9F85', dash: '8px 4px',  label: 'Feedback / re-check' },
+  ]
+
+  const PHASES = [
+    { row: 0, title: 'PHASE 1 — STRATEGY & JD APPROVAL' },
+    { row: 1, title: 'PHASE 2 — SOURCING & MONITORING LOOP' },
+    { row: 2, title: 'PHASE 3 — AI SCREENING & INTERVIEWS' },
+    { row: 3, title: 'PHASE 4 — SELECTION, OFFERS & ONBOARDING' },
   ]
 
   return (
-    <div style={{ flex: 1, height: '100%', display: 'flex', overflow: 'hidden', background: '#090d16', fontFamily: 'Inter, sans-serif' }}>
+    <div style={{ flex: 1, height: '100%', display: 'flex', overflow: 'hidden', background: '#181818', fontFamily: "'General Sans','Inter',sans-serif", color: '#EBDCC4' }}>
 
       {/* ── LEFT SIDEBAR ───────────────────────────────── */}
-      <div style={{ width: 262, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', background: '#0b0f19' }}>
-        <div style={{ padding: '18px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
+      <div style={{ width: 260, flexShrink: 0, borderRight: '1px solid #35211A', display: 'flex', flexDirection: 'column', background: '#1E1A18' }}>
+        <div style={{ padding: '18px 16px 14px', borderBottom: '1px solid #35211A' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-            <GitBranch size={17} color="#6366f1" />
-            <span style={{ fontWeight: 700, fontSize: 15, color: '#f8fafc' }}>Workflow Monitor</span>
+            <GitBranch size={16} color="#DC9F85" />
+            <span style={{ fontWeight: 700, fontSize: 15, color: '#EBDCC4', fontFamily: "'Clash Grotesk',sans-serif" }}>Workflow Monitor</span>
           </div>
-          <p style={{ fontSize: 11.5, color: '#64748b' }}>Multi-agent execution workflow</p>
+          <p style={{ fontSize: 11, color: '#7A6A5E' }}>Multi-agent execution graph</p>
         </div>
 
         {workflowState && (
-          <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.08)', padding: '4px 10px', borderRadius: 20, border: '1px solid rgba(16,185,129,0.2)' }}>
-              <span style={{ background: '#10b981', width: 6, height: 6, borderRadius: '50%' }} />
-              <span style={{ fontSize: 11, color: '#10b981', fontWeight: 500 }}>Live · updates every 5s</span>
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid #35211A' }}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(220,159,133,0.1)', padding: '4px 10px', borderRadius: 4, border: '1px solid #66473B' }}>
+              <span style={{ background: '#DC9F85', width: 6, height: 6, borderRadius: '50%' }} />
+              <span style={{ fontSize: 10, color: '#DC9F85', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Live · updates 5s</span>
             </div>
           </div>
         )}
 
-        {/* Loop / branch legend */}
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-          <div style={{ fontSize: 9.5, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.7px', marginBottom: 8 }}>Edge Types</div>
+        {/* Edge Types Legend */}
+        <div style={{ padding: '12px 14px', borderBottom: '1px solid #35211A' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: '#7A6A5E', textTransform: 'uppercase', letterSpacing: '0.12em', marginBottom: 8 }}>Edge Types</div>
           {EDGE_LEGEND.map(l => (
             <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 5 }}>
-              <svg width={28} height={10} style={{ flexShrink: 0 }}>
-                <line x1={2} y1={5} x2={26} y2={5} stroke={l.color} strokeWidth={1.8}
+              <svg width={26} height={10} style={{ flexShrink: 0 }}>
+                <line x1={2} y1={5} x2={24} y2={5} stroke={l.color} strokeWidth={1.8}
                   strokeDasharray={l.dash === 'none' ? undefined : l.dash} />
               </svg>
-              <span style={{ fontSize: 10.5, color: '#64748b' }}>{l.label}</span>
+              <span style={{ fontSize: 11, color: '#B6A596' }}>{l.label}</span>
             </div>
           ))}
         </div>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '10px 10px' }}>
-          <div style={{ fontSize: 10, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.8px', padding: '0 6px', marginBottom: 8 }}>
-            Active Roles · {jobs?.items?.length || 0}
+        {/* Active Roles */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '12px 10px' }}>
+          <div style={{ fontSize: 9, fontWeight: 700, color: '#7A6A5E', textTransform: 'uppercase', letterSpacing: '0.12em', padding: '0 4px', marginBottom: 8 }}>
+            Active Roles ({jobs?.items?.length || 0})
           </div>
           {!jobs?.items?.length ? (
-            <div style={{ textAlign: 'center', padding: '36px 10px', color: '#374151' }}>
-              <Briefcase size={26} style={{ display: 'block', margin: '0 auto 8px', color: '#1f2937' }} />
+            <div style={{ textAlign: 'center', padding: '36px 10px', color: '#7A6A5E' }}>
+              <Briefcase size={26} style={{ display: 'block', margin: '0 auto 8px', opacity: 0.2 }} />
               <span style={{ fontSize: 12 }}>No jobs found</span>
             </div>
           ) : jobs.items.map(j => {
             const isSel = j.id === selectedJobId
-            const sc = jobStatusColor[j.status] || '#64748b'
             return (
               <div key={j.id} onClick={() => { setSelectedJobId(j.id); setSelectedNode(null) }}
-                style={{ padding: '11px 13px', borderRadius: 10, marginBottom: 6, cursor: 'pointer', transition: 'all 0.15s ease', background: isSel ? 'rgba(99,102,241,0.1)' : 'rgba(255,255,255,0.02)', border: `1px solid ${isSel ? '#6366f1' : 'rgba(255,255,255,0.06)'}` }}
-                onMouseEnter={e => { if (!isSel) { e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)' }}}
-                onMouseLeave={e => { if (!isSel) { e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)' }}}
+                style={{
+                  padding: '11px 12px', borderRadius: 4, marginBottom: 6, cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  background: isSel ? 'rgba(220,159,133,0.08)' : '#221D1A',
+                  border: `1px solid ${isSel ? '#66473B' : '#35211A'}`,
+                }}
+                onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.borderColor = '#66473B' }}
+                onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.borderColor = '#35211A' }}
               >
-                <div style={{ fontWeight: 600, fontSize: 13, color: isSel ? '#a5b4fc' : '#cbd5e1', marginBottom: 3 }}>{j.title}</div>
-                <div style={{ fontSize: 11, color: '#475569', marginBottom: 6 }}>{j.department} · {j.location}</div>
+                <div style={{ fontWeight: 600, fontSize: 13, color: isSel ? '#EBDCC4' : '#B6A596', marginBottom: 2 }}>{j.title}</div>
+                <div style={{ fontSize: 11, color: '#7A6A5E', marginBottom: 6 }}>{j.department} · {j.location}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: sc, boxShadow: `0 0 4px ${sc}` }} />
-                  <span style={{ fontSize: 11, color: '#64748b' }}>{jobStatusLabel[j.status] || j.status}</span>
+                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: jobStatusColor[j.status] || '#7A6A5E' }} />
+                  <span style={{ fontSize: 10, color: '#7A6A5E', fontWeight: 600 }}>{jobStatusLabel[j.status] || j.status}</span>
                 </div>
               </div>
             )
@@ -668,76 +584,75 @@ export default function WorkflowMonitor() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
 
         {!selectedJobId ? (
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#1f2937' }}>
-            <Activity size={48} style={{ marginBottom: 14 }} />
-            <p style={{ fontSize: 15, color: '#475569' }}>Select a job to view its workflow graph</p>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', color: '#7A6A5E' }}>
+            <Activity size={44} style={{ marginBottom: 12, opacity: 0.3 }} />
+            <p style={{ fontSize: 14, color: '#B6A596' }}>Select a job to view its workflow graph</p>
           </div>
         ) : (
           <>
-            {/* Top bar */}
-            <div style={{ padding: '12px 20px', borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.01)', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Top Bar */}
+            <div style={{ padding: '12px 20px', borderBottom: '1px solid #35211A', background: '#1E1A18', flexShrink: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
-                <div style={{ fontSize: 10, color: '#374151', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '1px' }}>
-                  Multi-Agent Workflow · {currentJob?.title}
+                <div style={{ fontSize: 9, color: '#7A6A5E', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.14em' }}>
+                  Multi-Agent Workflow Graph · {currentJob?.title}
                 </div>
                 {currentJob?.hiring_goal && (
-                  <div style={{ fontSize: 11.5, color: '#475569', marginTop: 2 }}>
-                    Goal: <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>"{currentJob.hiring_goal}"</span>
+                  <div style={{ fontSize: 11, color: '#B6A596', marginTop: 2 }}>
+                    Goal: <span style={{ color: '#EBDCC4', fontStyle: 'italic' }}>"{currentJob.hiring_goal}"</span>
                   </div>
                 )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 {/* Tab toggles */}
-                <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', background: '#221D1A', borderRadius: 4, border: '1px solid #66473B', overflow: 'hidden' }}>
                   {(['graph', 'logs'] as const).map(tab => (
                     <button key={tab} onClick={() => setActiveTab(tab)}
-                      style={{ padding: '5px 14px', background: activeTab === tab ? 'rgba(99,102,241,0.2)' : 'transparent', border: 'none', color: activeTab === tab ? '#a5b4fc' : '#475569', fontSize: 11, fontWeight: 600, cursor: 'pointer', textTransform: 'capitalize', transition: 'all 0.15s' }}>
-                      {tab === 'logs' ? `📋 Exec Logs${allLogs.length > 0 ? ` (${allLogs.length})` : ''}` : '🗺 Graph'}
+                      style={{
+                        padding: '6px 12px', background: activeTab === tab ? '#DC9F85' : 'transparent',
+                        border: 'none', color: activeTab === tab ? '#181818' : '#B6A596',
+                        fontSize: 10, fontWeight: 700, cursor: 'pointer', textTransform: 'uppercase',
+                        letterSpacing: '0.08em', transition: 'all 0.15s',
+                        fontFamily: "'General Sans','Inter',sans-serif",
+                      }}>
+                      {tab === 'logs' ? `📋 Exec Logs${allLogs.length > 0 ? ` (${allLogs.length})` : ''}` : '🗺 Node Graph'}
                     </button>
                   ))}
                 </div>
 
-                {/* Pipeline progress */}
+                {/* Pipeline Progress */}
                 <div>
-                  <div style={{ fontSize: 10.5, color: '#374151', marginBottom: 4, textAlign: 'right' }}>Pipeline Progress</div>
+                  <div style={{ fontSize: 9, color: '#7A6A5E', marginBottom: 3, textAlign: 'right', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Pipeline Progress</div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <div style={{ width: 130, height: 4, background: 'rgba(255,255,255,0.07)', borderRadius: 2, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${progress}%`, background: 'linear-gradient(90deg,#6366f1,#10b981)', borderRadius: 2, transition: 'width 0.5s ease' }} />
+                    <div style={{ width: 120, height: 4, background: '#35211A', borderRadius: 2, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${progress}%`, background: '#DC9F85', borderRadius: 2, transition: 'width 0.5s ease' }} />
                     </div>
-                    <span style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>{progress}<span style={{ fontSize: 10, color: '#374151' }}>%</span></span>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: '#EBDCC4', fontFamily: "'Clash Grotesk',sans-serif" }}>{progress}%</span>
                   </div>
                 </div>
 
                 {workflowState ? (() => {
                   const cs = workflowState.current_stage
-                  const clr = cs === 'completed' ? '#10b981' : cs === 'failed' ? '#ef4444' : '#6366f1'
                   const label = cs === 'completed' ? 'Completed' : cs === 'failed' ? 'Failed' : `Active: ${cs.replace(/_/g, ' ')}`
                   return (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: `${clr}18`, borderRadius: 20, border: `1px solid ${clr}40` }}>
-                      <span className="pulse-dot" style={{ background: clr, width: 7, height: 7 }} />
-                      <span style={{ fontSize: 11, fontWeight: 600, color: clr }}>{label}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: 'rgba(107,158,126,0.1)', borderRadius: 4, border: '1px solid rgba(107,158,126,0.3)' }}>
+                      <span className="pulse-dot" style={{ background: '#8ab4a0', width: 6, height: 6 }} />
+                      <span style={{ fontSize: 10, fontWeight: 700, color: '#8ab4a0', letterSpacing: '0.08em', textTransform: 'uppercase' }}>{label}</span>
                     </div>
                   )
                 })() : workflowError ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 12px', background: 'rgba(245,158,11,0.08)', borderRadius: 20, border: '1px solid rgba(245,158,11,0.25)' }}>
-                    <AlertTriangle size={11} color="#f59e0b" />
-                    <span style={{ fontSize: 11, fontWeight: 600, color: '#f59e0b' }}>Workflow not started</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: 'rgba(182,165,150,0.08)', borderRadius: 4, border: '1px solid #35211A' }}>
+                    <AlertTriangle size={11} color="#7A6A5E" />
+                    <span style={{ fontSize: 10, fontWeight: 700, color: '#7A6A5E', letterSpacing: '0.08em', textTransform: 'uppercase' }}>Workflow Pending</span>
                   </div>
                 ) : null}
-
-                {/* Loop indicator */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '5px 10px', background: 'rgba(249,115,22,0.08)', border: '1px solid rgba(249,115,22,0.2)', borderRadius: 20 }}>
-                  <RotateCcw size={11} color="#f97316" />
-                  <span style={{ fontSize: 10.5, color: '#f97316', fontWeight: 600 }}>3 Active Loops</span>
-                </div>
               </div>
             </div>
 
             {/* Canvas + Detail panel OR Execution Log Timeline */}
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
-              {/* SVG canvas */}
+              {/* SVG Canvas */}
               <div
                 ref={canvasRef}
                 onWheel={handleWheel}
@@ -751,7 +666,7 @@ export default function WorkflowMonitor() {
                   userSelect: 'none',
                 }}
               >
-                {/* Transformed graph world */}
+                {/* Transformed Graph World */}
                 <div style={{
                   transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
                   transformOrigin: '0 0',
@@ -762,52 +677,42 @@ export default function WorkflowMonitor() {
                 }}>
                   <svg viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`} width={CANVAS_W} height={CANVAS_H} style={{ display: 'block' }}>
                     <defs>
-                      {/* Arrowhead markers */}
-                      {[
-                        { id: 'arr-done',   fill: '#10b981' },
-                        { id: 'arr-run',    fill: '#6366f1' },
-                        { id: 'arr-amber',  fill: '#f59e0b' },
-                        { id: 'arr-orange', fill: '#f97316' },
-                        { id: 'arr-purple', fill: '#8b5cf6' },
-                        { id: 'arr-idle',   fill: 'rgba(255,255,255,0.25)' },
-                      ].map(m => (
-                        <marker key={m.id} id={m.id} markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto">
-                          <path d="M0,0 L0,7 L8,3.5 z" fill={m.fill} />
-                        </marker>
-                      ))}
-
-                      {/* Column lane subtle backgrounds */}
-                      <linearGradient id="lane-left" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="rgba(245,158,11,0.02)" />
-                        <stop offset="100%" stopColor="rgba(245,158,11,0.005)" />
-                      </linearGradient>
-                      <linearGradient id="lane-right" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="rgba(139,92,246,0.02)" />
-                        <stop offset="100%" stopColor="rgba(139,92,246,0.005)" />
-                      </linearGradient>
+                      <marker id="arr-accent" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto">
+                        <path d="M0,0 L0,7 L8,3.5 z" fill="#DC9F85" />
+                      </marker>
+                      <marker id="arr-green" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto">
+                        <path d="M0,0 L0,7 L8,3.5 z" fill="#8ab4a0" />
+                      </marker>
+                      <marker id="arr-muted" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto">
+                        <path d="M0,0 L0,7 L8,3.5 z" fill="#B6A596" />
+                      </marker>
+                      <marker id="arr-idle" markerWidth="8" markerHeight="8" refX="7" refY="3.5" orient="auto">
+                        <path d="M0,0 L0,7 L8,3.5 z" fill="#66473B" />
+                      </marker>
                     </defs>
 
-                    {/* Clean dot grid */}
-                    {Array.from({ length: Math.ceil(CANVAS_H / 32) }, (_, ri) =>
-                      Array.from({ length: Math.ceil(CANVAS_W / 32) }, (_, ci) => (
-                        <circle key={`d${ri}-${ci}`} cx={ci * 32 + 16} cy={ri * 32 + 16} r={1} fill="rgba(255,255,255,0.04)" />
+                    {/* Dot Grid */}
+                    {Array.from({ length: Math.ceil(CANVAS_H / 30) }, (_, ri) =>
+                      Array.from({ length: Math.ceil(CANVAS_W / 30) }, (_, ci) => (
+                        <circle key={`d${ri}-${ci}`} cx={ci * 30 + 15} cy={ri * 30 + 15} r={0.8} fill="#35211A" />
                       ))
                     )}
 
-                    {/* Lane highlights */}
-                    <rect x={colX(0) - 12} y={PAD_Y} width={COL_W} height={CANVAS_H - PAD_Y * 2} rx={10} fill="url(#lane-left)" stroke="rgba(255,255,255,0.03)" />
-                    <rect x={colX(4) - 12} y={PAD_Y} width={COL_W} height={CANVAS_H - PAD_Y * 2} rx={10} fill="url(#lane-right)" stroke="rgba(255,255,255,0.03)" />
-
-                    {/* Lane labels */}
-                    <text x={colX(0) + NW / 2} y={PAD_Y - 18} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="700" fontFamily="Inter,sans-serif" letterSpacing="1">
-                      OPTIMISATION LOOP
-                    </text>
-                    <text x={colX(2) + NW / 2} y={PAD_Y - 18} textAnchor="middle" fontSize={9} fill="#cbd5e1" fontWeight="700" fontFamily="Inter,sans-serif" letterSpacing="1">
-                      MAIN PIPELINE SPINE
-                    </text>
-                    <text x={colX(4) + NW / 2} y={PAD_Y - 18} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="700" fontFamily="Inter,sans-serif" letterSpacing="1">
-                      REJECTION / CLOSE
-                    </text>
+                    {/* Phase Swimlanes */}
+                    {PHASES.map(p => {
+                      const py = rowY(p.row) - 20
+                      const ph = ROW_H - 10
+                      return (
+                        <g key={p.title}>
+                          <rect x={PAD_X - 20} y={py} width={CANVAS_W - PAD_X * 2 + 40} height={ph} rx={4}
+                            fill={p.row % 2 === 0 ? 'rgba(235,220,196,0.015)' : 'rgba(220,159,133,0.01)'}
+                            stroke="#35211A" strokeDasharray="4 4" strokeWidth={0.8} />
+                          <text x={PAD_X - 10} y={py + 16} fontSize={8.5} fill="#7A6A5E" fontWeight="700" fontFamily="General Sans,sans-serif" letterSpacing="1.2">
+                            {p.title}
+                          </text>
+                        </g>
+                      )
+                    })}
 
                     {/* ── EDGES ──────────────────────────────────── */}
                     {EDGES.map((edge, ei) => {
@@ -819,31 +724,29 @@ export default function WorkflowMonitor() {
                       const isActive = ['completed', 'running'].includes(fromState)
                       const d = buildEdgePath(fromNode, toNode, edge.type)
                       const mid = edgeMid(fromNode, toNode, edge.type)
-                      const isAnimated = isActive && (edge.type === 'loop' || edge.type === 'feedback' || edge.type === 'branch_no')
+
                       return (
                         <g key={`e-${ei}`}>
-                          {/* Clean connector line */}
                           <path d={d} fill="none"
                             stroke={es.color}
                             strokeWidth={es.width}
                             strokeDasharray={es.dash === 'none' ? undefined : es.dash}
-                            strokeDashoffset={isAnimated ? dashOffset : 0}
+                            strokeDashoffset={isActive ? dashOffset : 0}
                             markerEnd={`url(#${es.marker})`}
                             opacity={isActive ? 0.95 : 0.45}
                           />
-                          {/* Modern edge label pill */}
                           {edge.label && (
                             <g>
                               <rect
-                                x={mid.x - 46} y={mid.y - 11}
-                                width={92} height={22} rx={11}
-                                fill="#0f172a"
-                                stroke="rgba(255,255,255,0.12)"
-                                strokeWidth={1}
+                                x={mid.x - 42} y={mid.y - 10}
+                                width={84} height={20} rx={4}
+                                fill="#1E1A18"
+                                stroke="#66473B"
+                                strokeWidth={0.8}
                               />
-                              <text x={mid.x} y={mid.y + 4} textAnchor="middle"
-                                fontSize={9.5} fill="#cbd5e1" fontWeight="600"
-                                fontFamily="Inter,sans-serif">
+                              <text x={mid.x} y={mid.y + 3} textAnchor="middle"
+                                fontSize={9} fill="#EBDCC4" fontWeight="600"
+                                fontFamily="General Sans,sans-serif">
                                 {edge.label}
                               </text>
                             </g>
@@ -858,11 +761,9 @@ export default function WorkflowMonitor() {
                       const c = stateColors(state)
                       const isSel = selectedNode?.id === node.id
                       const isHov = hoveredNodeId === node.id
-                      const isRunning = state === 'running'
                       const nx = colX(node.col)
                       const ny = rowY(node.row)
                       const typeIsHuman = node.agentType === 'human'
-                      const typeColor = typeIsHuman ? '#fcd34d' : '#a5b4fc'
 
                       return (
                         <g key={node.id}
@@ -872,442 +773,136 @@ export default function WorkflowMonitor() {
                           onMouseLeave={() => setHoveredNodeId(null)}
                           style={{ cursor: 'pointer' }}
                         >
-                          {/* Selection outline */}
+                          {/* Selection Outline */}
                           {isSel && (
-                            <rect x={-2} y={-2} width={NW + 4} height={NH + 4} rx={12} fill="none"
-                              stroke="#6366f1" strokeWidth={2} opacity={0.9} />
+                            <rect x={-2} y={-2} width={NW + 4} height={NH + 4} rx={6} fill="none"
+                              stroke="#DC9F85" strokeWidth={1.5} opacity={1} />
                           )}
 
-                          {/* Node card body */}
-                          <rect x={0} y={0} width={NW} height={NH} rx={10}
-                            fill={isSel ? '#1e293b' : isHov ? '#1e293b' : '#0f172a'}
-                            stroke={isSel ? '#6366f1' : isHov ? 'rgba(255,255,255,0.2)' : c.border}
+                          {/* Node Box */}
+                          <rect x={0} y={0} width={NW} height={NH} rx={4}
+                            fill={isSel ? '#221D1A' : isHov ? '#221D1A' : '#1E1A18'}
+                            stroke={isSel ? '#DC9F85' : isHov ? '#66473B' : c.border}
                             strokeWidth={isSel ? 1.5 : 1}
                           />
 
-                          {/* Left accent bar */}
-                          <rect x={0} y={12} width={3} height={NH - 24} rx={2}
+                          {/* Left Accent Strip */}
+                          <rect x={0} y={8} width={3} height={NH - 16} rx={1}
                             fill={c.stroke} opacity={state === 'idle' ? 0.3 : 1} />
 
-                          {/* Status indicator dot */}
-                          <circle cx={14} cy={14} r={3.5} fill={c.stroke} opacity={state === 'idle' ? 0.4 : 1} />
+                          {/* Step Number Badge */}
+                          <rect x={10} y={8} width={18} height={14} rx={3} fill="rgba(235,220,196,0.05)" border="1px solid #35211A" />
+                          <text x={19} y={18} textAnchor="middle" fontSize={8.5} fontWeight="700" fill="#B6A596" fontFamily="General Sans,sans-serif">
+                            {node.stepNum}
+                          </text>
 
-                          {/* Agent type pill */}
-                          <rect x={NW - 62} y={8} width={54} height={16} rx={8}
-                            fill={typeIsHuman ? 'rgba(245,158,11,0.12)' : 'rgba(99,102,241,0.12)'}
-                            stroke={typeIsHuman ? 'rgba(245,158,11,0.3)' : 'rgba(99,102,241,0.3)'}
-                            strokeWidth={0.8} />
-                          <text x={NW - 35} y={19} textAnchor="middle" fontSize={8.5} fill={typeColor} fontWeight="700" fontFamily="Inter,sans-serif">
+                          {/* Agent Type Badge */}
+                          <rect x={NW - 56} y={7} width={48} height={15} rx={3}
+                            fill="rgba(220,159,133,0.08)" stroke="#66473B" strokeWidth={0.8} />
+                          <text x={NW - 32} y={17} textAnchor="middle" fontSize={8} fill={typeIsHuman ? '#B6A596' : '#DC9F85'} fontWeight="700" fontFamily="General Sans,sans-serif">
                             {typeIsHuman ? '👤 HUMAN' : '🤖 AI'}
                           </text>
 
-                          {/* Short title */}
-                          <text x={22} y={NH / 2 - 4} fontSize={13} fontWeight="600"
-                            fill={state === 'idle' ? '#94a3b8' : '#f8fafc'}
-                            fontFamily="Inter,sans-serif">{node.shortTitle}</text>
-                          {/* Agent name */}
-                          <text x={22} y={NH / 2 + 11} fontSize={11} fill={state === 'idle' ? '#475569' : '#94a3b8'}
-                            fontFamily="Inter,sans-serif">{node.agentName}</text>
-                          {/* Status badge */}
-                          <text x={22} y={NH / 2 + 25} fontSize={10} fill={c.text} fontWeight="600"
-                            fontFamily="Inter,sans-serif">● {c.badge}</text>
+                          {/* Node Title & Details */}
+                          <text x={12} y={NH / 2 + 1} fontSize={12} fontWeight="700"
+                            fill={state === 'idle' ? '#7A6A5E' : '#EBDCC4'}
+                            fontFamily="'Clash Grotesk','General Sans',sans-serif">{node.shortTitle}</text>
+
+                          <text x={12} y={NH / 2 + 15} fontSize={10} fill={state === 'idle' ? '#7A6A5E' : '#B6A596'}
+                            fontFamily="General Sans,sans-serif">{node.agentName}</text>
+
+                          <text x={12} y={NH / 2 + 28} fontSize={9.5} fill={c.text} fontWeight="600"
+                            fontFamily="General Sans,sans-serif">● {c.badge}</text>
                         </g>
                       )
                     })}
-
-                    {/* ── Decision diamond labels ────────────────── */}
-                    {[
-                      { nodeId: 'human_approval', x: colX(2) + NW / 2, y: rowY(3) + NH + 12, label: '◆ JD Approved?' },
-                      { nodeId: 'monitoring',     x: colX(2) + NW / 2, y: rowY(6) + NH + 12, label: '◆ ≥ 10 Applications?' },
-                      { nodeId: 'interviewing',   x: colX(2) + NW / 2, y: rowY(9) + NH + 12, label: '◆ Candidate Selected?' },
-                      { nodeId: 'candidate_selected', x: colX(2) + NW / 2, y: rowY(10) + NH + 12, label: '◆ Offer Accepted?' },
-                      { nodeId: 'renegotiation',  x: colX(4) + NW / 2, y: rowY(11) + NH + 12, label: '◆ Accepted after nego?' },
-                    ].map(dl => {
-                      const st = getState(dl.nodeId)
-                      const col = st === 'completed' ? '#10b981' : st === 'running' ? '#f59e0b' : '#64748b'
-                      return (
-                        <text key={dl.nodeId} x={dl.x} y={dl.y}
-                          textAnchor="middle" fontSize={9} fill={col} fontWeight="600"
-                          fontFamily="Inter,sans-serif" opacity={0.85}>
-                          {dl.label}
-                        </text>
-                      )
-                    })}
                   </svg>
+                </div>
 
-                  {/* Icon overlays */}
-                  <div style={{ position: 'absolute', top: 0, left: 0, pointerEvents: 'none' }}>
-                    {mappedNodes.map(node => {
-                      const state = getState(node.id)
-                      const c = stateColors(state)
-                      const Icon = node.icon
-                      const screenX = colX(node.col) + 2
-                      const screenY = rowY(node.row) + (NH / 2 - 8)
-                      return (
-                        <div key={`ico-${node.id}`} style={{ position: 'absolute', left: screenX, top: screenY, width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-                          {state === 'running'
-                            ? <Loader2 size={13} color={c.stroke} style={{ animation: 'spin 1s linear infinite' }} />
-                            : state === 'completed'
-                            ? <CheckCircle2 size={13} color={c.stroke} />
-                            : state === 'failed'
-                            ? <XCircle size={13} color={c.stroke} />
-                            : state === 'waiting_approval'
-                            ? <AlertCircle size={13} color={c.stroke} />
-                            : <Icon size={13} color={c.stroke} />
-                          }
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>{/* end transform world */}
-
-                {/* Zoom controls */}
-                <div style={{ position: 'absolute', bottom: 14, right: 14, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
-                  {[{ label: '+', action: () => setZoom(z => Math.min(2.5, z * 1.2)) },
-                    { label: '−', action: () => setZoom(z => Math.max(0.2, z / 1.2)) },
-                    { label: '⊙', action: () => { setZoom(0.58); setPan({ x: 0, y: 0 }) } },
-                  ].map(btn => (
-                    <button key={btn.label} onClick={btn.action}
-                      onMouseDown={e => e.stopPropagation()}
-                      style={{
-                        width: 30, height: 30, borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)',
-                        background: 'rgba(12,12,28,0.92)', color: '#94a3b8', fontSize: 16, fontWeight: 700,
-                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        backdropFilter: 'blur(6px)',
-                      }}
-                    >{btn.label}</button>
-                  ))}
-                  <div style={{ fontSize: 9, color: '#374151', textAlign: 'center', marginTop: 2 }}>{Math.round(zoom * 100)}%</div>
+                {/* Controls overlay */}
+                <div style={{ position: 'absolute', bottom: 16, right: 16, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
+                  <button onClick={() => setZoom(z => Math.min(2.5, z * 1.15))}
+                    style={{ width: 28, height: 28, borderRadius: 4, background: '#1E1A18', border: '1px solid #66473B', color: '#EBDCC4', cursor: 'pointer', fontWeight: 700 }}>+</button>
+                  <button onClick={() => setZoom(z => Math.max(0.3, z * 0.85))}
+                    style={{ width: 28, height: 28, borderRadius: 4, background: '#1E1A18', border: '1px solid #66473B', color: '#EBDCC4', cursor: 'pointer', fontWeight: 700 }}>-</button>
+                  <button onClick={() => { setZoom(0.82); setPan({ x: 20, y: 30 }) }}
+                    style={{ width: 28, height: 28, borderRadius: 4, background: '#1E1A18', border: '1px solid #66473B', color: '#EBDCC4', cursor: 'pointer', fontSize: 11 }} title="Reset view">⟲</button>
                 </div>
               </div>
 
-              {/* ── EXECUTION LOG TIMELINE (tab) ────────── */}
-              {activeTab === 'logs' && (
-                <div style={{ width: '100%', position: 'absolute', inset: 0, overflowY: 'auto', background: '#090d16', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 0, zIndex: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', width: '100%' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <Zap size={12} color="#818cf8" />
-                      Agent Execution Timeline
-                      <span style={{ marginLeft: 12, fontSize: 10, color: '#64748b', fontWeight: 400, textTransform: 'none' }}>{allLogs.length} log entries · auto-refreshes every 5s</span>
-                    </div>
-                    <button
-                      onClick={() => setActiveTab('graph')}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '6px',
-                        padding: '6px 12px',
-                        background: 'rgba(255,255,255,0.05)',
-                        border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: '8px',
-                        color: '#94a3b8',
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                        textTransform: 'none'
-                      }}
-                      onMouseEnter={e => {
-                        e.currentTarget.style.background = 'rgba(255,255,255,0.1)'
-                        e.currentTarget.style.color = '#e2e8f0'
-                      }}
-                      onMouseLeave={e => {
-                        e.currentTarget.style.background = 'rgba(255,255,255,0.05)'
-                        e.currentTarget.style.color = '#94a3b8'
-                      }}
-                    >
-                      <X size={14} /> Close Logs
-                    </button>
-                  </div>
-                  {allLogs.length === 0 ? (
-                    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#374151', paddingTop: 60 }}>
-                      <Activity size={32} style={{ marginBottom: 10, opacity: 0.4 }} />
-                      <p style={{ fontSize: 13, color: '#374151' }}>No execution logs yet.</p>
-                      <p style={{ fontSize: 11, color: '#1f2937', marginTop: 4 }}>Logs will appear here as agents run.</p>
-                    </div>
-                  ) : allLogs.map((log, i) => {
-                    const nodeId = LOG_NAME_MAP[log.agent_name]
-                    const node = mappedNodes.find(n => n.id === nodeId)
-                    const isSuccess = log.status === 'success'
-                    const dotColor = isSuccess ? '#10b981' : '#ef4444'
-                    return (
-                      <div key={log.id} style={{ display: 'flex', gap: 12, marginBottom: 0 }}>
-                        {/* Timeline line */}
-                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, width: 20 }}>
-                          <div style={{ width: 8, height: 8, borderRadius: '50%', background: dotColor, boxShadow: `0 0 6px ${dotColor}`, flexShrink: 0, marginTop: 14 }} />
-                          {i < allLogs.length - 1 && <div style={{ width: 1, flex: 1, minHeight: 20, background: 'rgba(255,255,255,0.06)', marginTop: 3 }} />}
-                        </div>
-                        {/* Log card */}
-                        <div style={{ flex: 1, background: isSuccess ? 'rgba(255,255,255,0.02)' : 'rgba(239,68,68,0.04)', border: `1px solid ${isSuccess ? 'rgba(255,255,255,0.06)' : 'rgba(239,68,68,0.2)'}`, borderRadius: 9, padding: '10px 14px', marginBottom: 10 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <span style={{ fontSize: 11, fontWeight: 700, color: '#a5b4fc' }}>{log.agent_name}</span>
-                              {node && <span style={{ fontSize: 9.5, color: '#374151', background: 'rgba(255,255,255,0.05)', padding: '2px 7px', borderRadius: 10 }}>{node.shortTitle}</span>}
-                              <span style={{ fontSize: 9.5, color: isSuccess ? '#10b981' : '#f87171', background: isSuccess ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)', padding: '2px 7px', borderRadius: 10, border: `1px solid ${isSuccess ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}` }}>
-                                {isSuccess ? '✓ success' : '✗ failed'}
-                              </span>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                              {log.latency_ms > 0 && <span style={{ fontSize: 9.5, color: '#818cf8' }}>{log.latency_ms}ms</span>}
-                              {log.token_usage > 0 && <span style={{ fontSize: 9.5, color: '#6ee7b7' }}>{log.token_usage} tokens</span>}
-                              <span style={{ fontSize: 9.5, color: '#374151' }}>{formatTs(log.created_at)}</span>
-                            </div>
-                          </div>
-                          <div style={{ fontSize: 10.5, color: '#475569', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 2 }}>Action</div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>{log.action.replace(/_/g, ' ')}</div>
-                          {log.input_summary && (
-                            <>
-                              <div style={{ fontSize: 10.5, color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 2 }}>Input</div>
-                              <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5, marginBottom: 6 }}>{log.input_summary}</div>
-                            </>
-                          )}
-                          {log.output_summary && (
-                            <>
-                              <div style={{ fontSize: 10.5, color: '#374151', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: 2 }}>Output</div>
-                              <div style={{ fontSize: 11, color: '#a5b4fc', lineHeight: 1.5 }}>{log.output_summary}</div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-
-              {/* ── DETAIL PANEL ───────────────────────── */}
-              {selectedNode && activeTab === 'graph' && (() => {
-                const nd = mappedNodes.find(n => n.id === selectedNode.id) || selectedNode
-                const state = getState(nd.id)
-                const c = stateColors(state)
-                const nodeLogs = getLogs(nd.id)
-                const typeColor = nd.agentType === 'human' ? '#fcd34d' : '#a5b4fc'
-                // Find in/out edges
-                const outEdges = EDGES.filter(e => e.from === nd.id)
-                const inEdges = EDGES.filter(e => e.to === nd.id)
-                return (
-                  <div style={{ width: 300, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.07)', background: '#0b0f19', overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 12, animation: 'slideIn 0.18s ease-out' }}>
-                    {/* Header */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <div style={{ flex: 1, marginRight: 8 }}>
-                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: `${c.stroke}18`, border: `1px solid ${c.stroke}40`, padding: '3px 9px', borderRadius: 12, marginBottom: 8 }}>
-                          <span style={{ width: 6, height: 6, borderRadius: '50%', background: c.stroke }} />
-                          <span style={{ fontSize: 9.5, fontWeight: 700, color: c.text, textTransform: 'uppercase', letterSpacing: '0.5px' }}>{c.badge}</span>
-                        </div>
-                        <h3 style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', lineHeight: 1.3, marginBottom: 4 }}>{nd.title}</h3>
-                        <div style={{ fontSize: 10.5, color: '#374151' }}>
-                          Agent: <span style={{ color: typeColor, fontWeight: 600 }}>{nd.agentName}</span>
-                        </div>
-                      </div>
-                      <button onClick={() => setSelectedNode(null)} style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '4px 5px', cursor: 'pointer', color: '#475569' }}>
-                        <X size={13} />
-                      </button>
-                    </div>
-
-                    {/* Description */}
-                    <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 8, padding: 11 }}>
-                      <p style={{ fontSize: 11.5, color: '#64748b', lineHeight: 1.6 }}>{nd.description}</p>
-                    </div>
-
-                    {/* Execution steps */}
+              {/* ── RIGHT DETAIL PANEL (When a node is selected) ──────── */}
+              {selectedNode && (
+                <div style={{
+                  width: 320, flexShrink: 0, borderLeft: '1px solid #35211A',
+                  background: '#1E1A18', padding: '20px', overflowY: 'auto',
+                  display: 'flex', flexDirection: 'column', gap: 16,
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
-                      <div style={{ fontSize: 9.5, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 8 }}>Execution Steps</div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-                        {nd.subSteps.map((step, idx) => {
-                          const ss = getSubStep(state, nodeLogs, idx)
-                          return (
-                            <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <div style={{ flexShrink: 0, width: 17, height: 17, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                {ss === 'done'    && <div style={{ width: 17, height: 17, borderRadius: '50%', background: 'rgba(16,185,129,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><CheckCircle2 size={11} color="#10b981" /></div>}
-                                {ss === 'active'  && <Loader2 size={13} color="#6366f1" style={{ animation: 'spin 1s linear infinite' }} />}
-                                {ss === 'pending' && <div style={{ width: 17, height: 17, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.1)' }} />}
-                                {ss === 'failed'  && <div style={{ width: 17, height: 17, borderRadius: '50%', background: 'rgba(239,68,68,0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><XCircle size={11} color="#ef4444" /></div>}
-                              </div>
-                              <span style={{ fontSize: 11.5, color: ss === 'done' ? '#64748b' : ss === 'active' ? '#e2e8f0' : ss === 'failed' ? '#f87171' : '#1f2937', fontWeight: ss === 'active' ? 500 : 400 }}>{step}</span>
-                            </div>
-                          )
-                        })}
+                      <div style={{ fontSize: 9, fontWeight: 700, color: '#DC9F85', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
+                        NODE {selectedNode.stepNum} DETAILS
                       </div>
+                      <h3 style={{ fontSize: 16, fontWeight: 700, color: '#EBDCC4', fontFamily: "'Clash Grotesk',sans-serif", marginTop: 2 }}>
+                        {selectedNode.title}
+                      </h3>
                     </div>
+                    <button onClick={() => setSelectedNode(null)} style={{ background: 'none', border: 'none', color: '#7A6A5E', cursor: 'pointer', fontSize: 16 }}>✕</button>
+                  </div>
 
-                    {/* All logs for this node */}
-                    {nodeLogs.length > 1 && (
-                      <div style={{ marginTop: 4 }}>
-                        <div style={{ fontSize: 9.5, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 8 }}>All Runs ({nodeLogs.length})</div>
-                        {nodeLogs.map((lg, li) => (
-                          <div key={li} style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 7, padding: '7px 10px', marginBottom: 5, fontSize: 10.5 }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
-                              <span style={{ color: '#64748b' }}>{lg.action.replace(/_/g, ' ')}</span>
-                              <span style={{ color: '#374151' }}>{formatTs(lg.created_at)}</span>
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#7A6A5E', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>Agent</div>
+                    <div style={{ fontSize: 13, color: '#EBDCC4', fontWeight: 600 }}>{selectedNode.agentName} ({selectedNode.agentType.toUpperCase()})</div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#7A6A5E', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>Description</div>
+                    <div style={{ fontSize: 12, color: '#B6A596', lineHeight: 1.6 }}>{selectedNode.description}</div>
+                  </div>
+
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#7A6A5E', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>Sub-steps</div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      {selectedNode.subSteps.map((step, idx) => {
+                        const st = getState(selectedNode.id)
+                        const subSt = getSubStep(st, getLogs(selectedNode.id), idx)
+                        return (
+                          <div key={step} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11, color: subSt === 'done' ? '#8ab4a0' : subSt === 'active' ? '#DC9F85' : '#7A6A5E' }}>
+                            {subSt === 'done' ? <CheckCircle2 size={13} color="#8ab4a0" /> : subSt === 'active' ? <Loader2 size={13} color="#DC9F85" style={{ animation: 'spin 1s linear infinite' }} /> : <Circle size={13} color="#35211A" />}
+                            <span>{step}</span>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Logs for this node */}
+                  <div>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: '#7A6A5E', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>Agent Logs</div>
+                    {getLogs(selectedNode.id).length === 0 ? (
+                      <div style={{ fontSize: 11, color: '#7A6A5E' }}>No execution logs recorded yet.</div>
+                    ) : (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {getLogs(selectedNode.id).map(log => (
+                          <div key={log.id} style={{ padding: '8px 10px', background: '#221D1A', border: '1px solid #35211A', borderRadius: 4, fontSize: 11 }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#7A6A5E', fontSize: 9.5, marginBottom: 2 }}>
+                              <span>{log.action}</span>
+                              <span>{formatTs(log.created_at)}</span>
                             </div>
-                            {lg.output_summary && <div style={{ color: '#818cf8', lineHeight: 1.4 }}>{lg.output_summary}</div>}
+                            <div style={{ color: '#B6A596' }}>{log.message}</div>
                           </div>
                         ))}
                       </div>
                     )}
-
-                    {/* Metrics */}
-                    {nodeLogs.length > 0 && (
-                      <div style={{ background: 'rgba(0,0,0,0.35)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10, padding: 12 }}>
-                        <div style={{ fontSize: 9.5, fontWeight: 700, color: '#818cf8', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 5 }}>
-                          <Zap size={10} /> Execution Metrics
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                          <div style={{ flex: 1, background: 'rgba(99,102,241,0.07)', border: '1px solid rgba(99,102,241,0.15)', borderRadius: 7, padding: '8px 10px' }}>
-                            <div style={{ fontSize: 8.5, color: '#374151', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Latency</div>
-                            <div style={{ fontSize: 15, fontWeight: 700, color: '#a5b4fc' }}>{nodeLogs[0].latency_ms}<span style={{ fontSize: 9, color: '#374151' }}>ms</span></div>
-                          </div>
-                          {nodeLogs[0].token_usage > 0 && (
-                            <div style={{ flex: 1, background: 'rgba(16,185,129,0.07)', border: '1px solid rgba(16,185,129,0.15)', borderRadius: 7, padding: '8px 10px' }}>
-                              <div style={{ fontSize: 8.5, color: '#374151', fontWeight: 700, textTransform: 'uppercase', marginBottom: 2 }}>Tokens</div>
-                              <div style={{ fontSize: 15, fontWeight: 700, color: '#6ee7b7' }}>{nodeLogs[0].token_usage}</div>
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <div style={{ fontSize: 9, color: '#1f2937', fontWeight: 700, textTransform: 'uppercase', marginBottom: 3 }}>Input Context</div>
-                          <div style={{ fontSize: 11, color: '#64748b', lineHeight: 1.5, marginBottom: 8 }}>{nodeLogs[0].input_summary}</div>
-                          <div style={{ fontSize: 9, color: '#1f2937', fontWeight: 700, textTransform: 'uppercase', marginBottom: 3 }}>Output</div>
-                          <div style={{ fontSize: 11, color: '#a5b4fc', lineHeight: 1.5 }}>{nodeLogs[0].output_summary}</div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Human action alerts */}
-                    {nd.id === 'human_approval' && currentJob?.status === 'pending_approval' && (
-                      <div style={{ padding: 11, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                        <AlertTriangle size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
-                        <span style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.5 }}>Recruiter review required. Visit the <strong>Roles</strong> tab to approve the generated JD.</span>
-                      </div>
-                    )}
-                    {nd.id === 'human_review' && getStatus('human_review') === 'waiting_approval' && (
-                      <div style={{ padding: 11, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: 8, display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-                        <AlertTriangle size={13} color="#f59e0b" style={{ flexShrink: 0, marginTop: 1 }} />
-                        <span style={{ fontSize: 11, color: '#f59e0b', lineHeight: 1.5 }}>Shortlist validation required. Go to <strong>Candidates</strong> to review scores.</span>
-                      </div>
-                    )}
-                    {nd.id === 'interviewing' && isStuckInterview && (
-                      <div style={{ padding: 11, background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', borderRadius: 8 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                          <AlertCircle size={13} color="#f87171" />
-                          <span style={{ fontSize: 11, color: '#f87171' }}>Interview simulation stuck or failed.</span>
-                        </div>
-                        <button onClick={() => retryMutation.mutate()} disabled={retryMutation.isPending}
-                          style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center', width: '100%', background: '#ef4444', padding: '7px 0', borderRadius: 16, border: 'none', color: '#fff', fontSize: 11, fontWeight: 700, cursor: retryMutation.isPending ? 'not-allowed' : 'pointer' }}>
-                          {retryMutation.isPending ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <RefreshCw size={12} />}
-                          Retry Simulation
-                        </button>
-                      </div>
-                    )}
-
-                    {/* In/Out edges */}
-                    <div>
-                      {inEdges.length > 0 && (
-                        <div style={{ marginBottom: 8 }}>
-                          <div style={{ fontSize: 9, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 5 }}>Incoming Edges</div>
-                          {inEdges.map((e, i) => {
-                            const n = mappedNodes.find(x => x.id === e.from)
-                            const typeColors: Record<string, string> = { forward: '#10b981', branch_yes: '#10b981', branch_no: '#f59e0b', loop: '#f97316', feedback: '#ec4899' }
-                            return (
-                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 7, marginBottom: 3 }}>
-                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: typeColors[e.type], flexShrink: 0 }} />
-                                <span style={{ fontSize: 10.5, color: '#475569', flex: 1 }}>{n?.shortTitle || e.from}</span>
-                                <span style={{ fontSize: 9, color: typeColors[e.type], fontWeight: 600 }}>{e.type.replace('_', ' ')}</span>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                      {outEdges.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: 9, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: 5 }}>Outgoing Edges</div>
-                          {outEdges.map((e, i) => {
-                            const n = mappedNodes.find(x => x.id === e.to)
-                            const typeColors: Record<string, string> = { forward: '#10b981', branch_yes: '#10b981', branch_no: '#f59e0b', loop: '#f97316', feedback: '#ec4899' }
-                            return (
-                              <div key={i} onClick={() => { const t = mappedNodes.find(x => x.id === e.to); if (t) setSelectedNode(t) }}
-                                style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '6px 8px', background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 7, marginBottom: 3, cursor: 'pointer' }}>
-                                <span style={{ width: 5, height: 5, borderRadius: '50%', background: typeColors[e.type], flexShrink: 0 }} />
-                                <span style={{ fontSize: 10.5, color: '#64748b', flex: 1 }}>{n?.shortTitle || e.to}</span>
-                                {e.label && <span style={{ fontSize: 8.5, color: typeColors[e.type], fontWeight: 600 }}>{e.label}</span>}
-                                <ChevronRight size={10} color="#1f2937" />
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })()}
-
-              {/* ── NO WORKFLOW BANNER ─────────────────── */}
-              {activeTab === 'graph' && !selectedNode && workflowError && (
-                <div style={{ width: 340, flexShrink: 0, borderLeft: '1px solid rgba(245,158,11,0.15)', background: 'rgba(8,8,18,0.98)', padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <AlertTriangle size={16} color="#f59e0b" />
-                    <span style={{ fontSize: 13, fontWeight: 700, color: '#fbbf24' }}>Workflow Not Started</span>
-                  </div>
-                  <p style={{ fontSize: 11.5, color: '#64748b', lineHeight: 1.6 }}>
-                    No workflow has been initiated for <strong style={{ color: '#94a3b8' }}>{currentJob?.title}</strong>.
-                    Workflows start automatically when a job is created via the Recruiter dashboard or the AI chatbot.
-                  </p>
-                  <div style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.15)', borderRadius: 8, padding: 10 }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: '#f59e0b', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 6 }}>To start this workflow:</div>
-                    <ul style={{ fontSize: 11, color: '#64748b', paddingLeft: 14, lineHeight: 1.8, margin: 0 }}>
-                      <li>Go to <strong style={{ color: '#94a3b8' }}>Roles</strong> and approve a JD for this job, or</li>
-                      <li>Ask the chatbot to create a new job listing</li>
-                    </ul>
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* Legend bar */}
-            <div style={{ padding: '8px 20px', borderTop: '1px solid rgba(255,255,255,0.07)', background: '#0b0f19', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 18, fontSize: 10.5, color: '#64748b', flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, color: '#94a3b8' }}>Node State</span>
-              {[
-                { color: '#10b981', label: 'Completed' },
-                { color: '#6366f1', label: 'Running' },
-                { color: '#f59e0b', label: 'Awaiting Approval' },
-                { color: '#ef4444', label: 'Failed' },
-                { color: 'rgba(255,255,255,0.2)', label: 'Pending' },
-              ].map(l => (
-                <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: l.color, flexShrink: 0 }} />
-                  <span>{l.label}</span>
-                </div>
-              ))}
-              <span style={{ color: 'rgba(255,255,255,0.1)', marginLeft: 4 }}>|</span>
-              <span style={{ fontWeight: 700, color: '#94a3b8' }}>Edges</span>
-              {[
-                { color: '#10b981', dash: 'none',    label: 'Forward' },
-                { color: '#f59e0b', dash: '4px 3px', label: 'Branch' },
-                { color: '#f97316', dash: '5px 3px', label: 'Loop' },
-                { color: '#8b5cf6', dash: '7px 3px', label: 'Feedback' },
-              ].map(l => (
-                <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <svg width={20} height={8}>
-                    <line x1={1} y1={4} x2={19} y2={4} stroke={l.color} strokeWidth={1.5}
-                      strokeDasharray={l.dash === 'none' ? undefined : l.dash} />
-                  </svg>
-                  <span>{l.label}</span>
-                </div>
-              ))}
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, color: '#64748b' }}>
-                <Bot size={11} color="#a5b4fc" /><span style={{ color: '#94a3b8' }}>AI Agent</span>
-                <span style={{ color: '#fcd34d' }}>👤</span><span style={{ color: '#94a3b8' }}>Human Step</span>
-                <span>·</span>
-                <span style={{ fontSize: 10, color: '#475569' }}>Scroll/drag to navigate · Click node to inspect</span>
-              </div>
             </div>
           </>
         )}
       </div>
 
-      <style>{`
-        @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-        @keyframes slideIn { from{opacity:0;transform:translateX(16px)} to{opacity:1;transform:translateX(0)} }
-      `}</style>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   )
 }

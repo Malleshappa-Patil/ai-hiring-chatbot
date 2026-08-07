@@ -6,6 +6,43 @@ import { Plus, Briefcase, CheckCircle, XCircle, Edit3, Play, Loader2, Trash2 } f
 import toast from 'react-hot-toast'
 import type { CreateJobRequest, Job } from '@/types'
 
+/* ── Editorial colour tokens ─────────────────────────────────── */
+const C = {
+  bg:       '#181818',
+  panel:    '#1E1A18',
+  panelAlt: '#221D1A',
+  text:     '#EBDCC4',
+  muted:    '#B6A596',
+  faint:    '#7A6A5E',
+  accent:   '#DC9F85',
+  border:   '#66473B',
+  divider:  '#35211A',
+}
+
+const inputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '10px 14px',
+  background: 'rgba(235,220,196,0.04)',
+  border: `1px solid ${C.border}`,
+  borderRadius: '4px',
+  color: C.text,
+  fontSize: '13px',
+  fontFamily: "'General Sans','Inter',sans-serif",
+  outline: 'none',
+  boxSizing: 'border-box',
+  transition: 'border-color 0.15s',
+}
+
+const labelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '9px',
+  fontWeight: 700,
+  color: C.faint,
+  letterSpacing: '0.15em',
+  textTransform: 'uppercase',
+  marginBottom: '6px',
+}
+
 export default function JobManagement() {
   const qc = useQueryClient()
   const [showCreate, setShowCreate] = useState(false)
@@ -35,24 +72,17 @@ export default function JobManagement() {
       setShowCreate(false)
       setForm({ title: '', department: '', location: '', job_type: 'full_time', experience_level: '', hiring_goal: '', target_candidate_count: 3, application_open_days: 7 })
     },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.detail || 'Failed to create job'
-      toast.error(msg)
-    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to create job'),
   })
 
   const startWorkflowMutation = useMutation({
-    mutationFn: ({ jobId, goal }: { jobId: string; goal: string }) =>
-      workflowApi.start(jobId, goal),
+    mutationFn: ({ jobId, goal }: { jobId: string; goal: string }) => workflowApi.start(jobId, goal),
     onSuccess: () => {
-      toast.success('AI workflow started! Generating job description...')
+      toast.success('AI workflow started!')
       qc.invalidateQueries({ queryKey: ['jobs'] })
       qc.invalidateQueries({ queryKey: ['jd', selectedJob?.id] })
     },
-    onError: (err: any) => {
-      const msg = err?.response?.data?.detail || 'Failed to start workflow'
-      toast.error(msg)
-    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to start workflow'),
   })
 
   const approveMutation = useMutation({
@@ -65,8 +95,7 @@ export default function JobManagement() {
   })
 
   const rejectMutation = useMutation({
-    mutationFn: ({ jobId, reason }: { jobId: string; reason: string }) =>
-      jobsApi.rejectJD(jobId, reason),
+    mutationFn: ({ jobId, reason }: { jobId: string; reason: string }) => jobsApi.rejectJD(jobId, reason),
     onSuccess: () => {
       toast.success('JD rejected. Agent will regenerate.')
       qc.invalidateQueries({ queryKey: ['jd', selectedJob?.id] })
@@ -76,87 +105,104 @@ export default function JobManagement() {
   const deleteMutation = useMutation({
     mutationFn: (jobId: string) => jobsApi.delete(jobId),
     onSuccess: (_, jobId) => {
-      toast.success('Job deleted successfully')
+      toast.success('Job deleted')
       qc.invalidateQueries({ queryKey: ['jobs'] })
-      if (selectedJob?.id === jobId) {
-        setSelectedJob(null)
-      }
+      if (selectedJob?.id === jobId) setSelectedJob(null)
     },
     onError: () => toast.error('Failed to delete job'),
   })
 
-  const statusColor: Record<string, string> = {
+  const statusBadge: Record<string, string> = {
     draft: 'neutral', generating_jd: 'info', pending_approval: 'warning',
     approved: 'success', published: 'success', closed: 'neutral',
   }
 
   return (
-    <div style={{ padding: '32px', maxWidth: '1400px' }}>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px' }}>
-        <div>
-          <h1 style={{ fontSize: '22px', fontWeight: 700, color: '#e2e8f0' }}>Job Management</h1>
-          <p style={{ fontSize: '14px', color: '#64748b' }}>Create jobs and review AI-generated job descriptions</p>
-        </div>
+    <div style={{ padding: '32px', maxWidth: '1400px', fontFamily: "'General Sans','Inter',sans-serif", color: C.text }}>
 
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '28px', paddingBottom: '22px', borderBottom: `1px solid ${C.divider}` }}>
+        <div>
+          <h1 style={{ fontSize: '20px', fontWeight: 700, color: C.text, fontFamily: "'Clash Grotesk','General Sans',sans-serif", letterSpacing: '-0.01em' }}>
+            Job Management
+          </h1>
+          <p style={{ fontSize: '12px', color: C.faint, marginTop: '2px', letterSpacing: '0.01em' }}>
+            Create jobs and review AI-generated job descriptions
+          </p>
+        </div>
+        <button
+          onClick={() => setShowCreate(true)}
+          style={{
+            display: 'flex', alignItems: 'center', gap: '7px',
+            padding: '9px 16px',
+            background: C.accent, border: 'none', borderRadius: '4px',
+            color: C.bg, fontSize: '11px', fontWeight: 700,
+            letterSpacing: '0.1em', textTransform: 'uppercase',
+            cursor: 'pointer', fontFamily: "'General Sans','Inter',sans-serif",
+            transition: 'opacity 0.15s',
+          }}
+          onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.opacity = '0.85'}
+          onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.opacity = '1'}
+        >
+          <Plus size={14} /> New Job
+        </button>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: selectedJob ? '1fr 1fr' : '1fr', gap: '20px' }}>
-        {/* Job List */}
-        <div style={{
-          background: 'rgba(255,255,255,0.04)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: '14px', padding: '20px',
-        }}>
-          <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#94a3b8', marginBottom: '16px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: selectedJob ? '1fr 1fr' : '1fr', gap: '18px' }}>
+
+        {/* ── Job List ──────────────────────────────────────── */}
+        <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: '4px', padding: '20px' }}>
+          <h2 style={{ fontSize: '11px', fontWeight: 700, color: C.faint, letterSpacing: '0.15em', textTransform: 'uppercase', marginBottom: '14px' }}>
             All Jobs ({jobs?.total ?? 0})
           </h2>
 
           {isLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: '70px', borderRadius: '10px' }} />)}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {[1,2,3].map(i => <div key={i} className="skeleton" style={{ height: '64px' }} />)}
             </div>
           ) : !jobs?.items.length ? (
-            <div style={{ textAlign: 'center', padding: '48px', color: '#4a5568' }}>
-              <Briefcase size={40} style={{ marginBottom: '12px', opacity: 0.3 }} />
-              <p style={{ fontSize: '14px' }}>No jobs yet. Create your first hiring campaign.</p>
+            <div style={{ textAlign: 'center', padding: '48px', color: C.faint }}>
+              <Briefcase size={36} style={{ marginBottom: '12px', opacity: 0.2, display: 'block', margin: '0 auto 12px' }} />
+              <p style={{ fontSize: '13px' }}>No jobs yet. Create your first hiring campaign.</p>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {jobs.items.map(job => (
                 <div
                   key={job.id}
                   onClick={() => setSelectedJob(job)}
                   style={{
-                    padding: '14px 16px',
-                    background: selectedJob?.id === job.id ? 'rgba(99,102,241,0.12)' : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${selectedJob?.id === job.id ? 'rgba(99,102,241,0.4)' : 'rgba(255,255,255,0.06)'}`,
-                    borderRadius: '10px', cursor: 'pointer',
-                    transition: 'all 0.15s ease',
+                    padding: '12px 14px',
+                    background: selectedJob?.id === job.id ? `rgba(220,159,133,0.08)` : C.panelAlt,
+                    border: `1px solid ${selectedJob?.id === job.id ? C.border : C.divider}`,
+                    borderRadius: '4px', cursor: 'pointer',
+                    transition: 'all 0.15s',
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                   }}
+                  onMouseEnter={e => { if (selectedJob?.id !== job.id) (e.currentTarget as HTMLDivElement).style.borderColor = C.border }}
+                  onMouseLeave={e => { if (selectedJob?.id !== job.id) (e.currentTarget as HTMLDivElement).style.borderColor = C.divider }}
                 >
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: '14px', color: '#e2e8f0' }}>{job.title}</div>
-                    <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+                    <div style={{ fontWeight: 600, fontSize: '13px', color: selectedJob?.id === job.id ? C.text : C.muted }}>{job.title}</div>
+                    <div style={{ fontSize: '11px', color: C.faint, marginTop: '2px' }}>
                       {job.department} · {job.location} · {job.job_type.replace(/_/g,' ')}
                     </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span className={`badge badge-${statusColor[job.status] ?? 'neutral'}`}>
+                    <span className={`badge badge-${statusBadge[job.status] ?? 'neutral'}`}>
                       {job.status.replace(/_/g,' ')}
                     </span>
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (confirm('Are you sure you want to delete this job?')) {
-                          deleteMutation.mutate(job.id);
-                        }
+                      onClick={e => {
+                        e.stopPropagation()
+                        if (confirm('Delete this job?')) deleteMutation.mutate(job.id)
                       }}
-                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}
+                      style={{ background: 'none', border: 'none', color: C.faint, cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }}
                       title="Delete Job"
+                      onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.color = C.accent}
+                      onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.color = C.faint}
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>
@@ -165,45 +211,40 @@ export default function JobManagement() {
           )}
         </div>
 
-        {/* JD Panel */}
+        {/* ── JD Panel ──────────────────────────────────────── */}
         {selectedJob && (
-          <div style={{
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: '14px', padding: '20px',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <h2 style={{ fontSize: '15px', fontWeight: 600, color: '#94a3b8' }}>
+          <div style={{ background: C.panel, border: `1px solid ${C.border}`, borderRadius: '4px', padding: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '14px' }}>
+              <h2 style={{ fontSize: '11px', fontWeight: 700, color: C.faint, letterSpacing: '0.15em', textTransform: 'uppercase' }}>
                 Job Description — {selectedJob.title}
               </h2>
-              <button onClick={() => setSelectedJob(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer' }}>✕</button>
+              <button
+                onClick={() => setSelectedJob(null)}
+                style={{ background: 'none', border: 'none', color: C.faint, cursor: 'pointer', fontSize: '16px', lineHeight: 1 }}
+              >✕</button>
             </div>
 
             {!jd ? (
-              <div style={{ textAlign: 'center', padding: '40px', color: '#4a5568' }}>
-                <Edit3 size={32} style={{ marginBottom: '12px', opacity: 0.3 }} />
-                <p style={{ fontSize: '14px' }}>JD not yet generated for this job.</p>
+              <div style={{ textAlign: 'center', padding: '40px', color: C.faint }}>
+                <Edit3 size={28} style={{ marginBottom: '12px', opacity: 0.2, display: 'block', margin: '0 auto 12px' }} />
+                <p style={{ fontSize: '13px', marginBottom: '18px' }}>JD not yet generated for this job.</p>
                 <button
-                  onClick={() => startWorkflowMutation.mutate({
-                    jobId: selectedJob.id,
-                    goal: selectedJob.hiring_goal || `Hire a ${selectedJob.title}`
-                  })}
+                  onClick={() => startWorkflowMutation.mutate({ jobId: selectedJob.id, goal: selectedJob.hiring_goal || `Hire a ${selectedJob.title}` })}
                   disabled={startWorkflowMutation.isPending}
                   style={{
-                    marginTop: '16px',
                     display: 'inline-flex', alignItems: 'center', gap: '8px',
                     padding: '10px 20px',
-                    background: startWorkflowMutation.isPending
-                      ? 'rgba(99,102,241,0.4)'
-                      : 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                    border: 'none', borderRadius: '10px',
-                    color: 'white', fontSize: '13px', fontWeight: 600,
+                    background: startWorkflowMutation.isPending ? C.divider : C.accent,
+                    border: 'none', borderRadius: '4px',
+                    color: C.bg, fontSize: '11px', fontWeight: 700,
+                    letterSpacing: '0.1em', textTransform: 'uppercase',
                     cursor: startWorkflowMutation.isPending ? 'not-allowed' : 'pointer',
+                    fontFamily: "'General Sans','Inter',sans-serif",
                   }}
                 >
                   {startWorkflowMutation.isPending
-                    ? <><Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> Starting...</>  
-                    : <><Play size={16} /> Start AI Workflow</>}
+                    ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Starting...</>
+                    : <><Play size={14} /> Start AI Workflow</>}
                 </button>
               </div>
             ) : (
@@ -214,11 +255,11 @@ export default function JobManagement() {
                   </span>
                 </div>
                 <div style={{
-                  background: 'rgba(0,0,0,0.3)',
-                  border: '1px solid rgba(255,255,255,0.06)',
-                  borderRadius: '10px', padding: '16px',
+                  background: C.panelAlt,
+                  border: `1px solid ${C.divider}`,
+                  borderRadius: '4px', padding: '16px',
                   maxHeight: '320px', overflowY: 'auto',
-                  fontSize: '13px', color: '#cbd5e1', lineHeight: 1.7,
+                  fontSize: '13px', color: C.muted, lineHeight: 1.75,
                   marginBottom: '16px',
                 }}>
                   <div className="jd-markdown">
@@ -233,33 +274,37 @@ export default function JobManagement() {
                       onClick={() => approveMutation.mutate(selectedJob.id)}
                       disabled={approveMutation.isPending}
                       style={{
-                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                        padding: '11px', background: 'rgba(16,185,129,0.15)',
-                        border: '1px solid rgba(16,185,129,0.4)',
-                        borderRadius: '10px', color: '#10b981',
-                        fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                        padding: '10px',
+                        background: 'rgba(107,158,126,0.1)',
+                        border: '1px solid rgba(107,158,126,0.3)',
+                        borderRadius: '4px', color: '#8ab4a0',
+                        fontSize: '11px', fontWeight: 700,
+                        letterSpacing: '0.1em', textTransform: 'uppercase',
+                        cursor: 'pointer', fontFamily: "'General Sans','Inter',sans-serif",
                       }}
                     >
-                      {approveMutation.isPending ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={16} />}
+                      {approveMutation.isPending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <CheckCircle size={14} />}
                       Approve JD
                     </button>
                     <button
                       id="reject-jd-btn"
                       onClick={() => {
-                        const feedback = window.prompt("Enter revision feedback for AI regeneration:", "Please make the requirements more detailed and add ML/AI pipeline experience.");
-                        if (feedback !== null) {
-                          rejectMutation.mutate({ jobId: selectedJob.id, reason: feedback });
-                        }
+                        const feedback = window.prompt('Enter revision feedback for AI regeneration:', 'Please make requirements more detailed.')
+                        if (feedback !== null) rejectMutation.mutate({ jobId: selectedJob.id, reason: feedback })
                       }}
                       style={{
-                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                        padding: '11px', background: 'rgba(239,68,68,0.1)',
-                        border: '1px solid rgba(239,68,68,0.3)',
-                        borderRadius: '10px', color: '#ef4444',
-                        fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '7px',
+                        padding: '10px',
+                        background: 'rgba(182,165,150,0.08)',
+                        border: `1px solid ${C.border}`,
+                        borderRadius: '4px', color: C.muted,
+                        fontSize: '11px', fontWeight: 700,
+                        letterSpacing: '0.1em', textTransform: 'uppercase',
+                        cursor: 'pointer', fontFamily: "'General Sans','Inter',sans-serif",
                       }}
                     >
-                      <XCircle size={16} /> Reject & Revise
+                      <XCircle size={14} /> Reject & Revise
                     </button>
                   </div>
                 )}
@@ -269,21 +314,24 @@ export default function JobManagement() {
         )}
       </div>
 
-      {/* Create Job Modal */}
+      {/* ── Create Job Modal ──────────────────────────────── */}
       {showCreate && (
         <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)',
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
           backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
           justifyContent: 'center', zIndex: 100, padding: '24px',
         }}>
           <div style={{
-            background: '#1a1a2e', border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '520px',
+            background: C.panel, border: `1px solid ${C.border}`,
+            borderRadius: '4px', padding: '32px', width: '100%', maxWidth: '520px',
           }}>
-            <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#e2e8f0', marginBottom: '24px' }}>
+            <h2 style={{
+              fontSize: '16px', fontWeight: 700, color: C.text, marginBottom: '22px',
+              fontFamily: "'Clash Grotesk','General Sans',sans-serif", letterSpacing: '-0.01em',
+            }}>
               Create New Job
             </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               {[
                 { label: 'Job Title', field: 'title', placeholder: 'e.g. Senior Backend Engineer' },
                 { label: 'Department', field: 'department', placeholder: 'e.g. Engineering' },
@@ -292,19 +340,16 @@ export default function JobManagement() {
                 { label: 'Hiring Goal', field: 'hiring_goal', placeholder: 'e.g. Hire a Senior Backend Engineer for our platform team' },
               ].map(({ label, field, placeholder }) => (
                 <div key={field}>
-                  <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px', fontWeight: 500 }}>{label}</label>
+                  <label style={labelStyle}>{label}</label>
                   {field === 'hiring_goal' ? (
                     <textarea
                       value={(form[field as keyof CreateJobRequest] || '') as string}
                       onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
                       placeholder={placeholder}
                       rows={3}
-                      style={{
-                        width: '100%', padding: '10px 14px',
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: '10px', color: '#e2e8f0', fontSize: '14px',
-                        outline: 'none', resize: 'vertical', boxSizing: 'border-box',
-                      }}
+                      style={{ ...inputStyle, resize: 'vertical' }}
+                      onFocus={e => e.currentTarget.style.borderColor = C.accent}
+                      onBlur={e => e.currentTarget.style.borderColor = C.border}
                     />
                   ) : (
                     <input
@@ -312,119 +357,94 @@ export default function JobManagement() {
                       value={(form[field as keyof CreateJobRequest] || '') as string}
                       onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
                       placeholder={placeholder}
-                      style={{
-                        width: '100%', padding: '10px 14px',
-                        background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                        borderRadius: '10px', color: '#e2e8f0', fontSize: '14px',
-                        outline: 'none', boxSizing: 'border-box',
-                      }}
+                      style={inputStyle}
+                      onFocus={e => e.currentTarget.style.borderColor = C.accent}
+                      onBlur={e => e.currentTarget.style.borderColor = C.border}
                     />
                   )}
                 </div>
               ))}
+
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px', fontWeight: 500 }}>
-                  How many candidates do you want for this role?
-                </label>
+                <label style={labelStyle}>Target Candidate Count</label>
                 <input
-                  type="number"
-                  min={1}
-                  max={50}
+                  type="number" min={1} max={50}
                   value={form.target_candidate_count ?? 3}
                   onChange={e => setForm(p => ({ ...p, target_candidate_count: parseInt(e.target.value) || 1 }))}
-                  style={{
-                    width: '100%', padding: '10px 14px',
-                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px', color: '#e2e8f0', fontSize: '14px',
-                    outline: 'none', boxSizing: 'border-box',
-                  }}
+                  style={inputStyle}
+                  onFocus={e => e.currentTarget.style.borderColor = C.accent}
+                  onBlur={e => e.currentTarget.style.borderColor = C.border}
                 />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#94a3b8', marginBottom: '6px', fontWeight: 500 }}>
-                  How many days should this application stay open for candidates?
-                </label>
+                <label style={labelStyle}>Application Open Days</label>
                 <input
-                  type="number"
-                  min={1}
-                  max={90}
+                  type="number" min={1} max={90}
                   value={form.application_open_days ?? 7}
                   onChange={e => setForm(p => ({ ...p, application_open_days: parseInt(e.target.value) || 1 }))}
-                  style={{
-                    width: '100%', padding: '10px 14px',
-                    background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: '10px', color: '#e2e8f0', fontSize: '14px',
-                    outline: 'none', boxSizing: 'border-box',
-                  }}
+                  style={inputStyle}
+                  onFocus={e => e.currentTarget.style.borderColor = C.accent}
+                  onBlur={e => e.currentTarget.style.borderColor = C.border}
                 />
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+
+            <div style={{ display: 'flex', gap: '10px', marginTop: '22px' }}>
               <button
                 onClick={() => setShowCreate(false)}
                 style={{
-                  flex: 1, padding: '11px',
-                  background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)',
-                  borderRadius: '10px', color: '#94a3b8', cursor: 'pointer', fontSize: '14px', fontWeight: 600,
+                  flex: 1, padding: '10px',
+                  background: 'transparent', border: `1px solid ${C.divider}`,
+                  borderRadius: '4px', color: C.faint,
+                  cursor: 'pointer', fontSize: '11px', fontWeight: 700,
+                  letterSpacing: '0.1em', textTransform: 'uppercase',
+                  fontFamily: "'General Sans','Inter',sans-serif",
                 }}
-              >
-                Cancel
-              </button>
+              >Cancel</button>
               <button
                 id="submit-create-job-btn"
                 onClick={() => {
                   if (!form.title || !form.department || !form.location || !form.experience_level || !form.hiring_goal) {
-                    toast.error('Please fill in all details')
-                    return
+                    toast.error('Please fill in all details'); return
                   }
                   createMutation.mutate(form)
                 }}
                 disabled={createMutation.isPending}
                 style={{
                   flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  padding: '11px',
-                  background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                  border: 'none', borderRadius: '10px',
-                  color: 'white', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
+                  padding: '10px',
+                  background: createMutation.isPending ? C.divider : C.accent,
+                  border: 'none', borderRadius: '4px',
+                  color: C.bg, fontSize: '11px', fontWeight: 700,
+                  letterSpacing: '0.1em', textTransform: 'uppercase',
+                  cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
+                  fontFamily: "'General Sans','Inter',sans-serif",
                 }}
               >
-                {createMutation.isPending ? <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={16} />}
+                {createMutation.isPending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={14} />}
                 Create & Start Workflow
               </button>
             </div>
           </div>
         </div>
       )}
+
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        .jd-markdown p { margin: 0 0 8px 0; color: #cbd5e1; }
+        .jd-markdown p { margin: 0 0 8px 0; color: ${C.muted}; }
         .jd-markdown p:last-child { margin-bottom: 0; }
-        .jd-markdown h1, .jd-markdown h2, .jd-markdown h3, .jd-markdown h4 {
-          color: #e2e8f0;
-          font-size: 14px;
-          font-weight: 700;
-          margin: 14px 0 6px 0;
-          padding-bottom: 4px;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
+        .jd-markdown h1,.jd-markdown h2,.jd-markdown h3,.jd-markdown h4 {
+          color: ${C.text}; font-size: 13px; font-weight: 700;
+          margin: 12px 0 5px 0; padding-bottom: 4px;
+          border-bottom: 1px solid ${C.divider};
         }
-        .jd-markdown ul, .jd-markdown ol { margin: 6px 0 10px 18px; padding: 0; }
-        .jd-markdown li { margin-bottom: 4px; color: #cbd5e1; }
-        .jd-markdown strong { color: #c4b5fd; font-weight: 600; }
-        .jd-markdown em { color: #a5b4fc; }
-        .jd-markdown hr { border: none; border-top: 1px solid rgba(99,102,241,0.2); margin: 10px 0; }
-        .jd-markdown code {
-          background: rgba(99,102,241,0.15);
-          padding: 1px 5px;
-          border-radius: 4px;
-          font-size: 12px;
-          color: #a5b4fc;
-        }
-        .jd-markdown blockquote {
-          border-left: 3px solid rgba(99,102,241,0.5);
-          padding-left: 10px;
-          margin: 8px 0;
-          color: #94a3b8;
-        }
+        .jd-markdown ul,.jd-markdown ol { margin: 5px 0 9px 16px; padding: 0; }
+        .jd-markdown li { margin-bottom: 3px; color: ${C.muted}; }
+        .jd-markdown strong { color: ${C.text}; font-weight: 600; }
+        .jd-markdown em { color: ${C.muted}; }
+        .jd-markdown hr { border: none; border-top: 1px solid ${C.divider}; margin: 9px 0; }
+        .jd-markdown code { background: rgba(220,159,133,0.1); padding: 1px 5px; border-radius: 4px; font-size: 11px; color: ${C.accent}; }
+        .jd-markdown blockquote { border-left: 3px solid ${C.border}; padding-left: 10px; margin: 7px 0; color: ${C.faint}; }
       `}</style>
     </div>
   )
