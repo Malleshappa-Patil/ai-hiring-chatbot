@@ -309,11 +309,11 @@ const CANVAS_H = ROWS * ROW_H + PAD_Y * 2
 function edgeStyle(type: EdgeDef['type'], fromState: StageState) {
   const active = ['completed', 'running'].includes(fromState)
   switch (type) {
-    case 'forward':     return { color: active ? '#10b981' : 'rgba(255,255,255,0.22)', dash: 'none',      width: active ? 3.5 : 2,   marker: active ? 'arr-done'   : 'arr-idle' }
-    case 'branch_yes':  return { color: active ? '#10b981' : 'rgba(255,255,255,0.22)', dash: 'none',      width: active ? 3.5 : 2,   marker: active ? 'arr-done'   : 'arr-idle' }
-    case 'branch_no':   return { color: active ? '#f59e0b' : 'rgba(255,255,255,0.18)', dash: '9 5',      width: active ? 3   : 1.8, marker: active ? 'arr-amber'  : 'arr-idle' }
-    case 'loop':        return { color: active ? '#f97316' : 'rgba(255,255,255,0.18)', dash: '8 5',      width: active ? 3   : 1.8, marker: active ? 'arr-orange' : 'arr-idle' }
-    case 'feedback':    return { color: active ? '#ec4899' : 'rgba(255,255,255,0.18)', dash: '10 5 3 5', width: active ? 3   : 1.8, marker: active ? 'arr-pink'   : 'arr-idle' }
+    case 'forward':     return { color: active ? '#10b981' : 'rgba(255,255,255,0.16)', dash: 'none',      width: active ? 2.5 : 1.5, marker: active ? 'arr-done'   : 'arr-idle' }
+    case 'branch_yes':  return { color: active ? '#10b981' : 'rgba(255,255,255,0.16)', dash: 'none',      width: active ? 2.5 : 1.5, marker: active ? 'arr-done'   : 'arr-idle' }
+    case 'branch_no':   return { color: active ? '#f59e0b' : 'rgba(255,255,255,0.14)', dash: '6 4',      width: active ? 2   : 1.5, marker: active ? 'arr-amber'  : 'arr-idle' }
+    case 'loop':        return { color: active ? '#f97316' : 'rgba(255,255,255,0.14)', dash: '6 4',      width: active ? 2   : 1.5, marker: active ? 'arr-orange' : 'arr-idle' }
+    case 'feedback':    return { color: active ? '#8b5cf6' : 'rgba(255,255,255,0.14)', dash: '8 4 2 4', width: active ? 2   : 1.5, marker: active ? 'arr-purple' : 'arr-idle' }
     default:            return { color: 'rgba(255,255,255,0.12)', dash: 'none', width: 1.5, marker: 'arr-idle' }
   }
 }
@@ -394,11 +394,11 @@ function edgeMid(from: NodeDef, to: NodeDef, type: EdgeDef['type']): { x: number
 
 function stateColors(state: StageState) {
   switch (state) {
-    case 'completed':        return { stroke: '#10b981', bg: 'rgba(16,185,129,0.1)',   border: '#10b981', text: '#10b981', badge: 'Completed',       filterId: 'glow-green'  }
-    case 'running':          return { stroke: '#6366f1', bg: 'rgba(99,102,241,0.12)',  border: '#6366f1', text: '#a5b4fc', badge: 'Running',          filterId: 'glow-indigo' }
-    case 'waiting_approval': return { stroke: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  border: '#f59e0b', text: '#f59e0b', badge: 'Awaiting Approval', filterId: 'glow-amber'  }
-    case 'failed':           return { stroke: '#ef4444', bg: 'rgba(239,68,68,0.1)',   border: '#ef4444', text: '#ef4444', badge: 'Failed',            filterId: 'glow-red'    }
-    default:                 return { stroke: 'rgba(255,255,255,0.09)', bg: 'rgba(255,255,255,0.02)', border: 'rgba(255,255,255,0.09)', text: '#4b5563', badge: 'Pending', filterId: '' }
+    case 'completed':        return { stroke: '#10b981', bg: 'rgba(16,185,129,0.08)',  border: 'rgba(16,185,129,0.35)', text: '#34d399', badge: 'Completed'       }
+    case 'running':          return { stroke: '#6366f1', bg: 'rgba(99,102,241,0.12)',  border: 'rgba(99,102,241,0.45)', text: '#818cf8', badge: 'Running'         }
+    case 'waiting_approval': return { stroke: '#f59e0b', bg: 'rgba(245,158,11,0.08)',  border: 'rgba(245,158,11,0.35)', text: '#fbbf24', badge: 'Awaiting Approval'}
+    case 'failed':           return { stroke: '#ef4444', bg: 'rgba(239,68,68,0.08)',   border: 'rgba(239,68,68,0.35)',  text: '#f87171', badge: 'Failed'           }
+    default:                 return { stroke: 'rgba(255,255,255,0.15)', bg: '#0f172a', border: 'rgba(255,255,255,0.08)', text: '#64748b', badge: 'Pending'        }
   }
 }
 
@@ -599,22 +599,22 @@ export default function WorkflowMonitor() {
   ]
 
   return (
-    <div style={{ flex: 1, height: '100%', display: 'flex', overflow: 'hidden', background: '#06060f', fontFamily: 'Inter, sans-serif' }}>
+    <div style={{ flex: 1, height: '100%', display: 'flex', overflow: 'hidden', background: '#090d16', fontFamily: 'Inter, sans-serif' }}>
 
       {/* ── LEFT SIDEBAR ───────────────────────────────── */}
-      <div style={{ width: 262, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', background: 'rgba(255,255,255,0.01)' }}>
-        <div style={{ padding: '18px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+      <div style={{ width: 262, flexShrink: 0, borderRight: '1px solid rgba(255,255,255,0.07)', display: 'flex', flexDirection: 'column', background: '#0b0f19' }}>
+        <div style={{ padding: '18px 16px 12px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
             <GitBranch size={17} color="#6366f1" />
-            <span style={{ fontWeight: 700, fontSize: 15, color: '#e2e8f0' }}>Workflow Monitor</span>
+            <span style={{ fontWeight: 700, fontSize: 15, color: '#f8fafc' }}>Workflow Monitor</span>
           </div>
-          <p style={{ fontSize: 11.5, color: '#475569' }}>Multi-agent looping execution graph</p>
+          <p style={{ fontSize: 11.5, color: '#64748b' }}>Multi-agent execution workflow</p>
         </div>
 
         {workflowState && (
-          <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+          <div style={{ padding: '8px 14px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'rgba(16,185,129,0.08)', padding: '4px 10px', borderRadius: 20, border: '1px solid rgba(16,185,129,0.2)' }}>
-              <span className="pulse-dot" style={{ background: '#10b981', width: 6, height: 6 }} />
+              <span style={{ background: '#10b981', width: 6, height: 6, borderRadius: '50%' }} />
               <span style={{ fontSize: 11, color: '#10b981', fontWeight: 500 }}>Live · updates every 5s</span>
             </div>
           </div>
@@ -762,64 +762,50 @@ export default function WorkflowMonitor() {
                 }}>
                   <svg viewBox={`0 0 ${CANVAS_W} ${CANVAS_H}`} width={CANVAS_W} height={CANVAS_H} style={{ display: 'block' }}>
                     <defs>
-                      {/* Glow filters */}
-                      {[
-                        { id: 'glow-green',  r: '0.06', g: '0.73', b: '0.51' },
-                        { id: 'glow-indigo', r: '0.39', g: '0.40', b: '0.95' },
-                        { id: 'glow-amber',  r: '0.96', g: '0.62', b: '0.04' },
-                        { id: 'glow-red',    r: '0.94', g: '0.27', b: '0.27' },
-                      ].map(f => (
-                        <filter key={f.id} id={f.id} x="-60%" y="-60%" width="220%" height="220%">
-                          <feGaussianBlur in="SourceGraphic" stdDeviation="5" result="blur" />
-                          <feColorMatrix in="blur" type="matrix" values={`0 0 0 0 ${f.r}  0 0 0 0 ${f.g}  0 0 0 0 ${f.b}  0 0 0 1 0`} result="c" />
-                          <feMerge><feMergeNode in="c" /><feMergeNode in="SourceGraphic" /></feMerge>
-                        </filter>
-                      ))}
-
-                      {/* Arrowhead markers — larger for visibility */}
+                      {/* Arrowhead markers */}
                       {[
                         { id: 'arr-done',   fill: '#10b981' },
                         { id: 'arr-run',    fill: '#6366f1' },
                         { id: 'arr-amber',  fill: '#f59e0b' },
                         { id: 'arr-orange', fill: '#f97316' },
-                        { id: 'arr-pink',   fill: '#ec4899' },
-                        { id: 'arr-idle',   fill: 'rgba(255,255,255,0.3)' },
+                        { id: 'arr-purple', fill: '#8b5cf6' },
+                        { id: 'arr-idle',   fill: 'rgba(255,255,255,0.25)' },
                       ].map(m => (
-                        <marker key={m.id} id={m.id} markerWidth="12" markerHeight="12" refX="7" refY="4" orient="auto">
-                          <path d="M0,0 L0,8 L10,4 z" fill={m.fill} />
+                        <marker key={m.id} id={m.id} markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto">
+                          <path d="M0,0 L0,7 L8,3.5 z" fill={m.fill} />
                         </marker>
                       ))}
 
-                      {/* Column lane backgrounds */}
+                      {/* Column lane subtle backgrounds */}
                       <linearGradient id="lane-left" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="rgba(249,115,22,0.03)" />
-                        <stop offset="100%" stopColor="rgba(249,115,22,0.01)" />
+                        <stop offset="0%" stopColor="rgba(245,158,11,0.02)" />
+                        <stop offset="100%" stopColor="rgba(245,158,11,0.005)" />
                       </linearGradient>
                       <linearGradient id="lane-right" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="rgba(236,72,153,0.03)" />
-                        <stop offset="100%" stopColor="rgba(236,72,153,0.01)" />
+                        <stop offset="0%" stopColor="rgba(139,92,246,0.02)" />
+                        <stop offset="100%" stopColor="rgba(139,92,246,0.005)" />
                       </linearGradient>
                     </defs>
 
-                    {/* Dot grid */}
-                    {Array.from({ length: Math.ceil(CANVAS_H / 28) }, (_, ri) =>
-                      Array.from({ length: Math.ceil(CANVAS_W / 28) }, (_, ci) => (
-                        <circle key={`d${ri}-${ci}`} cx={ci * 28 + 14} cy={ri * 28 + 14} r={0.9} fill="rgba(255,255,255,0.03)" />
+                    {/* Clean dot grid */}
+                    {Array.from({ length: Math.ceil(CANVAS_H / 32) }, (_, ri) =>
+                      Array.from({ length: Math.ceil(CANVAS_W / 32) }, (_, ci) => (
+                        <circle key={`d${ri}-${ci}`} cx={ci * 32 + 16} cy={ri * 32 + 16} r={1} fill="rgba(255,255,255,0.04)" />
                       ))
                     )}
 
                     {/* Lane highlights */}
-                    <rect x={colX(0) - 12} y={PAD_Y} width={COL_W} height={CANVAS_H - PAD_Y * 2} rx={12} fill="url(#lane-left)" />
-                    <rect x={colX(4) - 12} y={PAD_Y} width={COL_W} height={CANVAS_H - PAD_Y * 2} rx={12} fill="url(#lane-right)" />
+                    <rect x={colX(0) - 12} y={PAD_Y} width={COL_W} height={CANVAS_H - PAD_Y * 2} rx={10} fill="url(#lane-left)" stroke="rgba(255,255,255,0.03)" />
+                    <rect x={colX(4) - 12} y={PAD_Y} width={COL_W} height={CANVAS_H - PAD_Y * 2} rx={10} fill="url(#lane-right)" stroke="rgba(255,255,255,0.03)" />
 
                     {/* Lane labels */}
-                    <text x={colX(0) + NW / 2} y={PAD_Y - 18} textAnchor="middle" fontSize={9} fill="rgba(249,115,22,0.5)" fontWeight="700" fontFamily="Inter,sans-serif" letterSpacing="1">
+                    <text x={colX(0) + NW / 2} y={PAD_Y - 18} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="700" fontFamily="Inter,sans-serif" letterSpacing="1">
                       OPTIMISATION LOOP
                     </text>
-                    <text x={colX(2) + NW / 2} y={PAD_Y - 18} textAnchor="middle" fontSize={9} fill="rgba(99,102,241,0.5)" fontWeight="700" fontFamily="Inter,sans-serif" letterSpacing="1">
+                    <text x={colX(2) + NW / 2} y={PAD_Y - 18} textAnchor="middle" fontSize={9} fill="#cbd5e1" fontWeight="700" fontFamily="Inter,sans-serif" letterSpacing="1">
                       MAIN PIPELINE SPINE
                     </text>
-                    <text x={colX(4) + NW / 2} y={PAD_Y - 18} textAnchor="middle" fontSize={9} fill="rgba(236,72,153,0.5)" fontWeight="700" fontFamily="Inter,sans-serif" letterSpacing="1">
+                    <text x={colX(4) + NW / 2} y={PAD_Y - 18} textAnchor="middle" fontSize={9} fill="#94a3b8" fontWeight="700" fontFamily="Inter,sans-serif" letterSpacing="1">
                       REJECTION / CLOSE
                     </text>
 
@@ -836,34 +822,27 @@ export default function WorkflowMonitor() {
                       const isAnimated = isActive && (edge.type === 'loop' || edge.type === 'feedback' || edge.type === 'branch_no')
                       return (
                         <g key={`e-${ei}`}>
-                          {/* Glow layer for active edges */}
-                          {isActive && (
-                            <path d={d} fill="none"
-                              stroke={es.color} strokeWidth={14} opacity={0.18}
-                            />
-                          )}
-                          {/* Solid edge */}
+                          {/* Clean connector line */}
                           <path d={d} fill="none"
                             stroke={es.color}
                             strokeWidth={es.width}
                             strokeDasharray={es.dash === 'none' ? undefined : es.dash}
                             strokeDashoffset={isAnimated ? dashOffset : 0}
                             markerEnd={`url(#${es.marker})`}
-                            opacity={isActive ? 0.9 : 0.6}
+                            opacity={isActive ? 0.95 : 0.45}
                           />
-                          {/* Edge label */}
+                          {/* Modern edge label pill */}
                           {edge.label && (
                             <g>
                               <rect
-                                x={mid.x - 44} y={mid.y - 11}
-                                width={88} height={22} rx={11}
-                                fill="rgba(6,6,15,0.92)"
-                                stroke={es.color}
-                                strokeWidth={1.2}
-                                strokeOpacity={0.8}
+                                x={mid.x - 46} y={mid.y - 11}
+                                width={92} height={22} rx={11}
+                                fill="#0f172a"
+                                stroke="rgba(255,255,255,0.12)"
+                                strokeWidth={1}
                               />
-                              <text x={mid.x} y={mid.y + 4.5} textAnchor="middle"
-                                fontSize={9.5} fill={es.color} fontWeight="700"
+                              <text x={mid.x} y={mid.y + 4} textAnchor="middle"
+                                fontSize={9.5} fill="#cbd5e1" fontWeight="600"
                                 fontFamily="Inter,sans-serif">
                                 {edge.label}
                               </text>
@@ -883,13 +862,7 @@ export default function WorkflowMonitor() {
                       const nx = colX(node.col)
                       const ny = rowY(node.row)
                       const typeIsHuman = node.agentType === 'human'
-                      const typeColor = typeIsHuman ? '#f59e0b' : '#818cf8'
-
-                      // Special colouring for loop/side nodes
-                      const isLoopNode = ['jd_optimization', 'repost', 'wait_loop', 'rejection_email', 'renegotiation'].includes(node.id)
-                      const loopTint = isLoopNode
-                        ? node.col === 0 ? 'rgba(249,115,22,0.06)' : 'rgba(236,72,153,0.06)'
-                        : undefined
+                      const typeColor = typeIsHuman ? '#fcd34d' : '#a5b4fc'
 
                       return (
                         <g key={node.id}
@@ -898,52 +871,45 @@ export default function WorkflowMonitor() {
                           onMouseEnter={() => setHoveredNodeId(node.id)}
                           onMouseLeave={() => setHoveredNodeId(null)}
                           style={{ cursor: 'pointer' }}
-                          filter={state !== 'idle' ? `url(#${c.filterId})` : ''}
                         >
-                          {/* Animated ring for running */}
-                          {isRunning && (
-                            <rect x={-5} y={-5} width={NW + 10} height={NH + 10} rx={17} fill="none"
-                              stroke="#6366f1" strokeWidth={1} strokeDasharray="7 4"
-                              strokeDashoffset={dashOffset * 0.5} opacity={0.5} />
-                          )}
-
-                          {/* Selection highlight */}
+                          {/* Selection outline */}
                           {isSel && (
-                            <rect x={-2} y={-2} width={NW + 4} height={NH + 4} rx={14} fill="none"
-                              stroke={c.border} strokeWidth={2} opacity={0.9} />
+                            <rect x={-2} y={-2} width={NW + 4} height={NH + 4} rx={12} fill="none"
+                              stroke="#6366f1" strokeWidth={2} opacity={0.9} />
                           )}
 
-                          {/* Node body */}
-                          <rect x={0} y={0} width={NW} height={NH} rx={11}
-                            fill={isSel ? c.bg : isHov ? 'rgba(255,255,255,0.05)' : (loopTint || '#0c0c1c')}
-                            stroke={isSel || isHov ? c.border : isLoopNode ? (node.col === 0 ? 'rgba(249,115,22,0.22)' : 'rgba(236,72,153,0.22)') : 'rgba(255,255,255,0.08)'}
+                          {/* Node card body */}
+                          <rect x={0} y={0} width={NW} height={NH} rx={10}
+                            fill={isSel ? '#1e293b' : isHov ? '#1e293b' : '#0f172a'}
+                            stroke={isSel ? '#6366f1' : isHov ? 'rgba(255,255,255,0.2)' : c.border}
                             strokeWidth={isSel ? 1.5 : 1}
                           />
 
-                          {/* Left colour accent */}
+                          {/* Left accent bar */}
                           <rect x={0} y={12} width={3} height={NH - 24} rx={2}
-                            fill={c.stroke} opacity={state === 'idle' ? 0.25 : 1} />
+                            fill={c.stroke} opacity={state === 'idle' ? 0.3 : 1} />
 
-                          {/* Status dot */}
-                          <circle cx={9} cy={9} r={4} fill={c.stroke} opacity={state === 'idle' ? 0.3 : 1} />
-                          {isRunning && <circle cx={9} cy={9} r={8} fill="none" stroke="#6366f1" strokeWidth={1} opacity={0.4} />}
+                          {/* Status indicator dot */}
+                          <circle cx={14} cy={14} r={3.5} fill={c.stroke} opacity={state === 'idle' ? 0.4 : 1} />
 
                           {/* Agent type pill */}
-                          <rect x={NW - 62} y={7} width={55} height={17} rx={8.5}
-                            fill={`${typeColor}18`} stroke={`${typeColor}45`} strokeWidth={0.7} />
-                          <text x={NW - 34.5} y={19} textAnchor="middle" fontSize={9} fill={typeColor} fontWeight="700" fontFamily="Inter,sans-serif">
+                          <rect x={NW - 62} y={8} width={54} height={16} rx={8}
+                            fill={typeIsHuman ? 'rgba(245,158,11,0.12)' : 'rgba(99,102,241,0.12)'}
+                            stroke={typeIsHuman ? 'rgba(245,158,11,0.3)' : 'rgba(99,102,241,0.3)'}
+                            strokeWidth={0.8} />
+                          <text x={NW - 35} y={19} textAnchor="middle" fontSize={8.5} fill={typeColor} fontWeight="700" fontFamily="Inter,sans-serif">
                             {typeIsHuman ? '👤 HUMAN' : '🤖 AI'}
                           </text>
 
                           {/* Short title */}
-                          <text x={20} y={NH / 2 - 6} fontSize={13.5} fontWeight="700"
-                            fill={state === 'idle' ? '#374151' : '#e2e8f0'}
+                          <text x={22} y={NH / 2 - 4} fontSize={13} fontWeight="600"
+                            fill={state === 'idle' ? '#94a3b8' : '#f8fafc'}
                             fontFamily="Inter,sans-serif">{node.shortTitle}</text>
                           {/* Agent name */}
-                          <text x={20} y={NH / 2 + 10} fontSize={11} fill={state === 'idle' ? '#1f2937' : '#64748b'}
+                          <text x={22} y={NH / 2 + 11} fontSize={11} fill={state === 'idle' ? '#475569' : '#94a3b8'}
                             fontFamily="Inter,sans-serif">{node.agentName}</text>
                           {/* Status badge */}
-                          <text x={20} y={NH / 2 + 25} fontSize={10} fill={c.text} fontWeight="600"
+                          <text x={22} y={NH / 2 + 25} fontSize={10} fill={c.text} fontWeight="600"
                             fontFamily="Inter,sans-serif">● {c.badge}</text>
                         </g>
                       )
@@ -951,18 +917,18 @@ export default function WorkflowMonitor() {
 
                     {/* ── Decision diamond labels ────────────────── */}
                     {[
-                      { nodeId: 'human_approval', x: colX(2) + NW / 2, y: rowY(3) + NH + 10, label: '◆ JD Approved?' },
-                      { nodeId: 'monitoring',     x: colX(2) + NW / 2, y: rowY(6) + NH + 10, label: '◆ ≥ 10 Applications?' },
-                      { nodeId: 'interviewing',   x: colX(2) + NW / 2, y: rowY(9) + NH + 10, label: '◆ Candidate Selected?' },
-                      { nodeId: 'candidate_selected', x: colX(2) + NW / 2, y: rowY(10) + NH + 10, label: '◆ Offer Accepted?' },
-                      { nodeId: 'renegotiation',  x: colX(4) + NW / 2, y: rowY(11) + NH + 10, label: '◆ Accepted after nego?' },
+                      { nodeId: 'human_approval', x: colX(2) + NW / 2, y: rowY(3) + NH + 12, label: '◆ JD Approved?' },
+                      { nodeId: 'monitoring',     x: colX(2) + NW / 2, y: rowY(6) + NH + 12, label: '◆ ≥ 10 Applications?' },
+                      { nodeId: 'interviewing',   x: colX(2) + NW / 2, y: rowY(9) + NH + 12, label: '◆ Candidate Selected?' },
+                      { nodeId: 'candidate_selected', x: colX(2) + NW / 2, y: rowY(10) + NH + 12, label: '◆ Offer Accepted?' },
+                      { nodeId: 'renegotiation',  x: colX(4) + NW / 2, y: rowY(11) + NH + 12, label: '◆ Accepted after nego?' },
                     ].map(dl => {
                       const st = getState(dl.nodeId)
-                      const col = st === 'completed' ? '#10b981' : st === 'running' ? '#f59e0b' : '#374151'
+                      const col = st === 'completed' ? '#10b981' : st === 'running' ? '#f59e0b' : '#64748b'
                       return (
                         <text key={dl.nodeId} x={dl.x} y={dl.y}
-                          textAnchor="middle" fontSize={8.5} fill={col} fontWeight="700"
-                          fontFamily="Inter,sans-serif" opacity={0.8}>
+                          textAnchor="middle" fontSize={9} fill={col} fontWeight="600"
+                          fontFamily="Inter,sans-serif" opacity={0.85}>
                           {dl.label}
                         </text>
                       )
@@ -1017,12 +983,12 @@ export default function WorkflowMonitor() {
 
               {/* ── EXECUTION LOG TIMELINE (tab) ────────── */}
               {activeTab === 'logs' && (
-                <div style={{ width: '100%', position: 'absolute', inset: 0, overflowY: 'auto', background: '#07071a', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 0, zIndex: 20 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', width: '100%' }}>
+                <div style={{ width: '100%', position: 'absolute', inset: 0, overflowY: 'auto', background: '#090d16', padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: 0, zIndex: 20 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'space-between', width: '100%' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <Zap size={12} color="#818cf8" />
                       Agent Execution Timeline
-                      <span style={{ marginLeft: 12, fontSize: 10, color: '#475569', fontWeight: 400, textTransform: 'none' }}>{allLogs.length} log entries · auto-refreshes every 5s</span>
+                      <span style={{ marginLeft: 12, fontSize: 10, color: '#64748b', fontWeight: 400, textTransform: 'none' }}>{allLogs.length} log entries · auto-refreshes every 5s</span>
                     </div>
                     <button
                       onClick={() => setActiveTab('graph')}
@@ -1114,12 +1080,12 @@ export default function WorkflowMonitor() {
                 const state = getState(nd.id)
                 const c = stateColors(state)
                 const nodeLogs = getLogs(nd.id)
-                const typeColor = nd.agentType === 'human' ? '#f59e0b' : '#818cf8'
+                const typeColor = nd.agentType === 'human' ? '#fcd34d' : '#a5b4fc'
                 // Find in/out edges
                 const outEdges = EDGES.filter(e => e.from === nd.id)
                 const inEdges = EDGES.filter(e => e.to === nd.id)
                 return (
-                  <div style={{ width: 300, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.06)', background: 'rgba(8,8,18,0.98)', overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 12, animation: 'slideIn 0.18s ease-out' }}>
+                  <div style={{ width: 300, flexShrink: 0, borderLeft: '1px solid rgba(255,255,255,0.07)', background: '#0b0f19', overflowY: 'auto', padding: '16px 14px', display: 'flex', flexDirection: 'column', gap: 12, animation: 'slideIn 0.18s ease-out' }}>
                     {/* Header */}
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1, marginRight: 8 }}>
@@ -1297,27 +1263,27 @@ export default function WorkflowMonitor() {
             </div>
 
             {/* Legend bar */}
-            <div style={{ padding: '8px 20px', borderTop: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.005)', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 18, fontSize: 10.5, color: '#374151', flexWrap: 'wrap' }}>
-              <span style={{ fontWeight: 700, color: '#1f2937' }}>Node State</span>
+            <div style={{ padding: '8px 20px', borderTop: '1px solid rgba(255,255,255,0.07)', background: '#0b0f19', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 18, fontSize: 10.5, color: '#64748b', flexWrap: 'wrap' }}>
+              <span style={{ fontWeight: 700, color: '#94a3b8' }}>Node State</span>
               {[
                 { color: '#10b981', label: 'Completed' },
                 { color: '#6366f1', label: 'Running' },
                 { color: '#f59e0b', label: 'Awaiting Approval' },
                 { color: '#ef4444', label: 'Failed' },
-                { color: 'rgba(255,255,255,0.1)', label: 'Pending' },
+                { color: 'rgba(255,255,255,0.2)', label: 'Pending' },
               ].map(l => (
                 <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: l.color, flexShrink: 0 }} />
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: l.color, flexShrink: 0 }} />
                   <span>{l.label}</span>
                 </div>
               ))}
-              <span style={{ color: '#1f2937', marginLeft: 4 }}>|</span>
-              <span style={{ fontWeight: 700, color: '#1f2937' }}>Edges</span>
+              <span style={{ color: 'rgba(255,255,255,0.1)', marginLeft: 4 }}>|</span>
+              <span style={{ fontWeight: 700, color: '#94a3b8' }}>Edges</span>
               {[
                 { color: '#10b981', dash: 'none',    label: 'Forward' },
                 { color: '#f59e0b', dash: '4px 3px', label: 'Branch' },
                 { color: '#f97316', dash: '5px 3px', label: 'Loop' },
-                { color: '#ec4899', dash: '7px 3px', label: 'Feedback' },
+                { color: '#8b5cf6', dash: '7px 3px', label: 'Feedback' },
               ].map(l => (
                 <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
                   <svg width={20} height={8}>
@@ -1327,11 +1293,11 @@ export default function WorkflowMonitor() {
                   <span>{l.label}</span>
                 </div>
               ))}
-              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, color: '#1f2937' }}>
-                <Bot size={11} color="#818cf8" /><span>AI Agent</span>
-                <span style={{ color: '#f59e0b' }}>👤</span><span>Human Step</span>
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8, color: '#64748b' }}>
+                <Bot size={11} color="#a5b4fc" /><span style={{ color: '#94a3b8' }}>AI Agent</span>
+                <span style={{ color: '#fcd34d' }}>👤</span><span style={{ color: '#94a3b8' }}>Human Step</span>
                 <span>·</span>
-                <span style={{ fontSize: 10 }}>Scroll/drag to navigate · Click node to inspect</span>
+                <span style={{ fontSize: 10, color: '#475569' }}>Scroll/drag to navigate · Click node to inspect</span>
               </div>
             </div>
           </>
