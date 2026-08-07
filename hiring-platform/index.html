@@ -5,10 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="description" content="HireBoard — Browse open positions and apply with your resume. Powered by AI Hiring Agent." />
   <title>HireBoard — Job Openings</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="style.css?v=5" />
+  <link rel="preconnect" href="https://api.fontshare.com" />
+  <link href="https://api.fontshare.com/v2/css?f[]=clash-grotesk@700,600,500&f[]=general-sans@600,500,400&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css?v=6" />
 </head>
 <body>
 
@@ -20,14 +19,14 @@
           <div class="logo-mark">H</div>
           <div>
             <div class="logo-name">HireBoard</div>
-            <div class="logo-sub">AI-Powered Hiring</div>
+            <div class="logo-sub">AI-POWERED HIRING</div>
           </div>
         </div>
         <nav class="header-nav">
-          <a href="#companies" class="nav-link">Companies</a>
-          <a href="#" class="nav-link" onclick="scrollToJobs(); return false;">Jobs</a>
+          <a href="#companies" class="nav-link">COMPANIES</a>
+          <a href="#" class="nav-link" onclick="scrollToJobs(); return false;">JOBS</a>
           <button id="btn-add-company" class="btn-add-company" onclick="openCompanyModal()">
-            + Add Company
+            + ADD COMPANY
           </button>
         </nav>
       </div>
@@ -37,8 +36,9 @@
   <!-- ── Page Title ───────────────────────────────────────────── -->
   <div class="page-intro">
     <div class="container">
-      <h1 class="page-title">Open Positions</h1>
-      <p class="page-sub">Jobs are automatically posted when a recruiter approves a JD in the AI Hiring Chatbot</p>
+      <div class="intro-eyebrow">EARLY ACCESS — CAREERS PLATFORM</div>
+      <h1 class="page-title">OPEN POSITIONS</h1>
+      <p class="page-sub">Jobs are automatically published when a recruiter approves a JD in the AI Hiring Platform</p>
     </div>
   </div>
 
@@ -65,7 +65,7 @@
     <div class="modal">
       <div class="modal-header">
         <div>
-          <h2 class="modal-heading" id="company-modal-heading">Add Company</h2>
+          <h2 class="modal-heading" id="company-modal-heading">ADD COMPANY</h2>
           <p class="modal-job-label">Fill in the company details below</p>
         </div>
         <button class="modal-close" onclick="closeCompanyModal()" aria-label="Close">✕</button>
@@ -76,39 +76,39 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label" for="co-name">Company Name <span class="req">*</span></label>
+            <label class="form-label" for="co-name">COMPANY NAME <span class="req">*</span></label>
             <input id="co-name" type="text" class="form-input" placeholder="e.g. Acme Corp" required />
           </div>
           <div class="form-group">
-            <label class="form-label" for="co-industry">Industry</label>
+            <label class="form-label" for="co-industry">INDUSTRY</label>
             <input id="co-industry" type="text" class="form-input" placeholder="e.g. Technology" />
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="co-tagline">Tagline</label>
+          <label class="form-label" for="co-tagline">TAGLINE</label>
           <input id="co-tagline" type="text" class="form-input" placeholder="e.g. Building the future, one hire at a time" />
         </div>
 
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label" for="co-location">Location</label>
+            <label class="form-label" for="co-location">LOCATION</label>
             <input id="co-location" type="text" class="form-input" placeholder="e.g. Bangalore, India" />
           </div>
           <div class="form-group">
-            <label class="form-label" for="co-team-size">Team Size</label>
+            <label class="form-label" for="co-team-size">TEAM SIZE</label>
             <input id="co-team-size" type="text" class="form-input" placeholder="e.g. 50–200" />
           </div>
         </div>
 
         <div class="form-group">
-          <label class="form-label" for="co-website">Website</label>
+          <label class="form-label" for="co-website">WEBSITE</label>
           <input id="co-website" type="url" class="form-input" placeholder="https://example.com" />
         </div>
 
         <button type="submit" id="company-submit-btn" class="btn-submit">
           <span class="spinner" aria-hidden="true"></span>
-          <span class="btn-label">Save Company</span>
+          <span class="btn-label">SAVE COMPANY</span>
         </button>
       </form>
     </div>
@@ -124,7 +124,7 @@
       <div id="form-view">
         <div class="modal-header">
           <div>
-            <h2 class="modal-heading" id="modal-heading">Apply for this Role</h2>
+            <h2 class="modal-heading" id="modal-heading">APPLY FOR THIS ROLE</h2>
             <p class="modal-job-label" id="modal-job-label">Loading…</p>
           </div>
           <button class="modal-close" onclick="closeModal()" aria-label="Close">✕</button>
@@ -137,34 +137,34 @@
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="field-name">Full Name <span class="req">*</span></label>
+              <label class="form-label" for="field-name">FULL NAME <span class="req">*</span></label>
               <input id="field-name" name="name" type="text" class="form-input" placeholder="Jane Smith" required autocomplete="name" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="field-email">Email <span class="req">*</span></label>
+              <label class="form-label" for="field-email">EMAIL ADDRESS <span class="req">*</span></label>
               <input id="field-email" name="email" type="email" class="form-input" placeholder="jane@example.com" required autocomplete="email" />
             </div>
           </div>
 
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label" for="field-phone">Phone</label>
+              <label class="form-label" for="field-phone">PHONE NUMBER</label>
               <input id="field-phone" name="phone" type="tel" class="form-input" placeholder="+91 98765 43210" autocomplete="tel" />
             </div>
             <div class="form-group">
-              <label class="form-label" for="field-linkedin">LinkedIn</label>
+              <label class="form-label" for="field-linkedin">LINKEDIN PROFILE</label>
               <input id="field-linkedin" name="linkedin_url" type="url" class="form-input" placeholder="https://linkedin.com/in/..." />
             </div>
           </div>
 
           <div class="form-group">
-            <label class="form-label" for="field-cover">Why are you a good fit?</label>
+            <label class="form-label" for="field-cover">WHY ARE YOU A GOOD FIT?</label>
             <textarea id="field-cover" name="cover_note" class="form-textarea" placeholder="Tell us briefly what excites you about this role…" rows="3"></textarea>
           </div>
 
           <!-- Resume Upload -->
           <div class="form-group">
-            <label class="form-label">Resume / CV <span class="req">*</span></label>
+            <label class="form-label">RESUME / CV <span class="req">*</span></label>
             <div id="drop-zone" class="drop-zone" role="button" tabindex="0"
               aria-label="Upload resume"
               onkeydown="if(event.key==='Enter'||event.key===' '){document.getElementById('resume-input').click()}"
@@ -187,7 +187,7 @@
 
           <button type="submit" id="submit-btn" class="btn-submit" disabled>
             <span class="spinner" aria-hidden="true"></span>
-            <span class="btn-label">Submit Application</span>
+            <span class="btn-label">SUBMIT APPLICATION</span>
           </button>
         </form>
       </div>
@@ -195,10 +195,10 @@
       <!-- Success View -->
       <div id="success-view" style="display:none;" class="success-view">
         <div class="success-check">✓</div>
-        <h3 class="success-title">Application Submitted!</h3>
+        <h3 class="success-title">APPLICATION SUBMITTED</h3>
         <p class="success-body">Your application has been received. Our AI agent will review your resume and reach out if you're shortlisted.</p>
         <div class="success-id" id="success-id"></div>
-        <button class="btn-submit" onclick="closeModal()">Back to Jobs</button>
+        <button class="btn-submit" onclick="closeModal()">BACK TO JOBS</button>
       </div>
 
     </div>
@@ -211,7 +211,7 @@
     <div class="modal modal--jd" role="document">
       <div class="modal-header">
         <div>
-          <h2 class="modal-heading" id="jd-modal-heading">Job Description</h2>
+          <h2 class="modal-heading" id="jd-modal-heading">JOB DESCRIPTION</h2>
           <p class="modal-job-label" id="jd-modal-label">Loading…</p>
         </div>
         <button class="modal-close" onclick="closeJdModal()" aria-label="Close">✕</button>
@@ -220,7 +220,7 @@
         <!-- Rendered markdown JD will be injected here -->
       </div>
       <div class="jd-modal-footer">
-        <button class="btn-submit" id="jd-apply-btn" onclick="applyFromJd()">Apply Now</button>
+        <button class="btn-submit" id="jd-apply-btn" onclick="applyFromJd()">APPLY NOW</button>
       </div>
     </div>
   </div>
@@ -234,14 +234,13 @@
   <footer class="footer">
     <div class="container">
       <p class="footer-text">
-        HireBoard is connected to the <a href="http://localhost:5173" target="_blank" rel="noopener">AI Hiring Chatbot</a>.
-        Jobs are published automatically when a recruiter approves a JD.
-        Agent fetches candidates at <a href="http://localhost:8001/candidates" target="_blank" rel="noopener">/candidates</a>.
+        HIREBOARD IS CONNECTED TO THE <a href="http://localhost:5173" target="_blank" rel="noopener">AI HIRING PLATFORM</a>.<br />
+        JOBS ARE PUBLISHED AUTOMATICALLY WHEN A RECRUITER APPROVES A JD.
       </p>
     </div>
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <script src="app.js?v=5"></script>
+  <script src="app.js?v=6"></script>
 </body>
 </html>

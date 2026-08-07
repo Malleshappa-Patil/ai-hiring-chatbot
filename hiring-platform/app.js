@@ -149,7 +149,7 @@ function renderCompanySection(company, idx) {
               </div>` : ''}
           </div>
           <button class="btn-edit-company" onclick="event.stopPropagation(); openCompanyModal('${escAttr(company.id)}')">
-            Edit
+            EDIT
           </button>
           ${chevron}
         </div>
@@ -174,19 +174,19 @@ function renderJobRow(job, index) {
   ).join('');
 
   const applyBtn = isClosed
-    ? `<button class="btn-apply btn-apply--disabled" disabled aria-disabled="true" onclick="event.preventDefault(); return false;">Applications Closed</button>`
+    ? `<button class="btn-apply btn-apply--disabled" disabled aria-disabled="true" onclick="event.preventDefault(); return false;">APPLICATIONS CLOSED</button>`
     : `<button
          class="btn-apply"
          onclick="openModal('${escAttr(job.id)}')"
          aria-label="Apply for ${escAttr(job.title)}"
-       >Apply Now</button>`;
+       >APPLY NOW</button>`;
 
   const viewJdBtn = job.description
     ? `<button
          class="btn-view-jd"
          onclick="event.stopPropagation(); openJdModal('${escAttr(job.id)}')"
          aria-label="View Job Description for ${escAttr(job.title)}"
-       >View JD</button>`
+       >VIEW JD</button>`
     : '';
 
   return `
