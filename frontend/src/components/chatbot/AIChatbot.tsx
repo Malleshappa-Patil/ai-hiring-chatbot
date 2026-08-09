@@ -27,7 +27,7 @@ interface LocalMessage {
 
 // ── Styles (inline for zero deps) ─────────────────────────────────────────────
 const styles = {
-  // Trigger button — white/black monochrome
+  // Trigger button — Editorial warm style
   trigger: {
     position: 'fixed' as const,
     bottom: '28px',
@@ -36,18 +36,19 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     gap: '10px',
-    padding: '14px 22px',
-    background: '#ffffff',
-    border: '1px solid #e8e8e8',
-    borderRadius: '50px',
-    color: '#0a0a0a',
-    fontFamily: 'Inter, system-ui, sans-serif',
-    fontSize: '14px',
+    padding: '12px 20px',
+    background: '#1E1A18',
+    border: '1px solid #66473B',
+    borderRadius: '4px',
+    color: '#EBDCC4',
+    fontFamily: "'General Sans', 'Inter', system-ui, sans-serif",
+    fontSize: '13px',
     fontWeight: 600,
     cursor: 'pointer',
-    boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
+    boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
     transition: 'all 0.2s ease',
-    letterSpacing: '0.01em',
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase' as const,
   },
   // Chat panel
   panel: {
@@ -59,19 +60,19 @@ const styles = {
     zIndex: 9998,
     display: 'flex',
     flexDirection: 'column' as const,
-    background: '#111111',
+    background: '#181818',
     backdropFilter: 'blur(24px)',
     WebkitBackdropFilter: 'blur(24px)',
-    borderLeft: '1px solid #1e1e1e',
-    boxShadow: '-8px 0 48px rgba(0,0,0,0.6)',
-    fontFamily: 'Inter, system-ui, sans-serif',
+    borderLeft: '1px solid #66473B',
+    boxShadow: '-8px 0 48px rgba(0,0,0,0.7)',
+    fontFamily: "'General Sans', 'Inter', system-ui, sans-serif",
     transition: 'transform 0.35s cubic-bezier(0.4, 0, 0.2, 1)',
   },
   // Header
   header: {
     padding: '18px 20px',
-    background: '#0a0a0a',
-    borderBottom: '1px solid #1e1e1e',
+    background: '#1E1A18',
+    borderBottom: '1px solid #66473B',
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
@@ -86,28 +87,31 @@ const styles = {
     flexDirection: 'column' as const,
     gap: '12px',
     scrollBehavior: 'smooth' as const,
+    background: '#181818',
   },
   // Input area
   inputArea: {
     padding: '16px',
-    borderTop: '1px solid #1e1e1e',
-    background: '#0a0a0a',
+    borderTop: '1px solid #66473B',
+    background: '#1E1A18',
     flexShrink: 0,
   },
   downloadBtn: {
-    padding: '6px 14px',
-    background: '#1a1a1a',
-    border: '1px solid #2a2a2a',
-    borderRadius: '20px',
-    color: '#aaaaaa',
-    fontSize: '11px',
-    fontWeight: 600,
+    padding: '5px 12px',
+    background: 'transparent',
+    border: '1px solid #66473B',
+    borderRadius: '4px',
+    color: '#B6A596',
+    fontSize: '10px',
+    fontWeight: 700,
     cursor: 'pointer',
-    fontFamily: 'Inter, system-ui, sans-serif',
+    fontFamily: "'General Sans', 'Inter', system-ui, sans-serif",
     transition: 'all 0.15s ease',
     display: 'inline-flex',
     alignItems: 'center',
     gap: '6px',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.08em',
   },
 }
 
@@ -122,7 +126,7 @@ function TypingDots() {
             width: '7px',
             height: '7px',
             borderRadius: '50%',
-            background: '#555555',
+            background: '#66473B',
             animation: `typingDot 1.2s ease-in-out ${i * 0.2}s infinite`,
           }}
         />
@@ -151,8 +155,9 @@ function MessageBubble({ message }: { message: LocalMessage }) {
           style={{
             width: '28px',
             height: '28px',
-            borderRadius: '8px',
-            background: '#ffffff',
+            borderRadius: '4px',
+            background: 'rgba(220,159,133,0.12)',
+            border: '1px solid rgba(220,159,133,0.3)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -160,7 +165,7 @@ function MessageBubble({ message }: { message: LocalMessage }) {
             marginTop: '2px',
           }}
         >
-          <Bot size={15} color="#0a0a0a" />
+          <Bot size={15} color="#DC9F85" />
         </div>
       )}
 
@@ -169,10 +174,10 @@ function MessageBubble({ message }: { message: LocalMessage }) {
         style={{
           maxWidth: '85%',
           padding: '10px 14px',
-          borderRadius: isBot ? '4px 14px 14px 14px' : '14px 4px 14px 14px',
-          background: isBot ? '#1a1a1a' : '#ffffff',
-          border: isBot ? '1px solid #2a2a2a' : 'none',
-          color: isBot ? '#e8e8e8' : '#0a0a0a',
+          borderRadius: '4px',
+          background: isBot ? '#1E1A18' : 'rgba(220,159,133,0.1)',
+          border: isBot ? '1px solid #35211A' : '1px solid rgba(220,159,133,0.25)',
+          color: isBot ? '#EBDCC4' : '#EBDCC4',
           fontSize: '13.5px',
           lineHeight: '1.6',
           wordBreak: 'break-word' as const,
@@ -195,20 +200,20 @@ function MessageBubble({ message }: { message: LocalMessage }) {
 // ── Step progress indicator ────────────────────────────────────────────────────
 function StepBadge({ step }: { step: string }) {
   const stepLabels: Record<string, { label: string; color: string }> = {
-    collect_details: { label: 'Collecting Details', color: '#888888' },
-    collect_job_title_and_skills: { label: 'Job Details', color: '#888888' },
-    collect_experience: { label: 'Experience', color: '#888888' },
-    collect_location: { label: 'Location', color: '#888888' },
-    collect_budget: { label: 'Budget', color: '#888888' },
-    collect_additional_requirements: { label: 'Requirements', color: '#888888' },
-    confirmation: { label: 'Confirm Request', color: '#b8963e' },
-    jd_generation: { label: 'Generating JD', color: '#aaaaaa' },
-    jd_review: { label: 'Review JD', color: '#b8963e' },
-    workflow_running: { label: 'Workflow Active', color: '#6b9e7e' },
-    complete: { label: 'Complete ✓', color: '#6b9e7e' },
+    collect_details: { label: 'Collecting Details', color: '#B6A596' },
+    collect_job_title_and_skills: { label: 'Job Details', color: '#B6A596' },
+    collect_experience: { label: 'Experience', color: '#B6A596' },
+    collect_location: { label: 'Location', color: '#B6A596' },
+    collect_budget: { label: 'Budget', color: '#B6A596' },
+    collect_additional_requirements: { label: 'Requirements', color: '#B6A596' },
+    confirmation: { label: 'Confirm Request', color: '#DC9F85' },
+    jd_generation: { label: 'Generating JD', color: '#DC9F85' },
+    jd_review: { label: 'Review JD', color: '#DC9F85' },
+    workflow_running: { label: 'Workflow Active', color: '#8ab4a0' },
+    complete: { label: 'Complete ✓', color: '#8ab4a0' },
   }
 
-  const info = stepLabels[step] || { label: step, color: '#64748b' }
+  const info = stepLabels[step] || { label: step, color: '#7A6A5E' }
 
   return (
     <div
@@ -217,13 +222,15 @@ function StepBadge({ step }: { step: string }) {
         alignItems: 'center',
         gap: '5px',
         padding: '3px 9px',
-        borderRadius: '20px',
+        borderRadius: '4px',
         background: `${info.color}18`,
         border: `1px solid ${info.color}40`,
         color: info.color,
-        fontSize: '11px',
-        fontWeight: 600,
-        letterSpacing: '0.02em',
+        fontSize: '10px',
+        fontWeight: 700,
+        letterSpacing: '0.1em',
+        textTransform: 'uppercase',
+        fontFamily: "'General Sans', 'Inter', sans-serif",
       }}
     >
       <div style={{ width: '5px', height: '5px', borderRadius: '50%', background: info.color }} />
@@ -476,15 +483,16 @@ export default function AIChatbot() {
           <div style={styles.header}>
             {/* Bot icon + title */}
             <div style={{
-              width: '38px', height: '38px', borderRadius: '11px',
-              background: 'linear-gradient(135deg, #6366f1, #a78bfa)',
+              width: '38px', height: '38px', borderRadius: '4px',
+              background: 'rgba(220,159,133,0.1)',
+              border: '1px solid rgba(220,159,133,0.3)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0, boxShadow: '0 4px 12px rgba(99,102,241,0.4)',
+              flexShrink: 0,
             }}>
-              <Sparkles size={18} color="white" />
+              <Sparkles size={18} color="#DC9F85" />
             </div>
             <div style={{ flex: 1 }}>
-              <div style={{ fontWeight: 700, fontSize: '14px', color: '#e2e8f0', lineHeight: 1.2 }}>
+              <div style={{ fontWeight: 700, fontSize: '14px', color: '#EBDCC4', lineHeight: 1.2, fontFamily: "'Clash Grotesk', 'General Sans', sans-serif", letterSpacing: '0.01em' }}>
                 AI Hiring Assistant
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
@@ -492,14 +500,14 @@ export default function AIChatbot() {
                   width: '6px',
                   height: '6px',
                   borderRadius: '50%',
-                  background: isLoading ? '#818cf8' : '#10b981',
-                  boxShadow: isLoading ? '0 0 8px #818cf8' : 'none',
+                  background: isLoading ? '#DC9F85' : '#8ab4a0',
+                  boxShadow: isLoading ? '0 0 8px rgba(220,159,133,0.6)' : 'none',
                   animation: isLoading ? 'chatPulse 1.5s infinite' : 'none',
                 }} />
-                <span style={{ fontSize: '11px', color: isLoading ? '#818cf8' : '#64748b', fontWeight: isLoading ? 600 : 400 }}>
+                <span style={{ fontSize: '10px', color: isLoading ? '#DC9F85' : '#7A6A5E', fontWeight: isLoading ? 600 : 400, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                   {isLoading ? 'Typing...' : workflowTriggered ? 'Workflow Running' : 'Online'}
                 </span>
-                {workflowTriggered && <Workflow size={11} color="#10b981" />}
+                {workflowTriggered && <Workflow size={11} color="#8ab4a0" />}
               </div>
             </div>
             {/* Step badge */}
@@ -509,9 +517,10 @@ export default function AIChatbot() {
               <button
                 onClick={() => setIsMinimized(!isMinimized)}
                 style={{
-                  background: 'none', border: 'none', color: '#64748b',
-                  cursor: 'pointer', padding: '4px', borderRadius: '6px',
+                  background: 'none', border: 'none', color: '#7A6A5E',
+                  cursor: 'pointer', padding: '4px', borderRadius: '4px',
                   display: 'flex', alignItems: 'center',
+                  transition: 'color 0.15s',
                 }}
                 title="Minimize"
               >
@@ -520,9 +529,10 @@ export default function AIChatbot() {
               <button
                 onClick={handleClose}
                 style={{
-                  background: 'none', border: 'none', color: '#64748b',
-                  cursor: 'pointer', padding: '4px', borderRadius: '6px',
+                  background: 'none', border: 'none', color: '#7A6A5E',
+                  cursor: 'pointer', padding: '4px', borderRadius: '4px',
                   display: 'flex', alignItems: 'center',
+                  transition: 'color 0.15s',
                 }}
                 title="Close"
               >
@@ -535,17 +545,18 @@ export default function AIChatbot() {
           {workflowTriggered && (
             <div style={{
               padding: '10px 16px',
-              background: 'rgba(16,185,129,0.08)',
-              borderBottom: '1px solid rgba(16,185,129,0.2)',
+              background: 'rgba(138,180,160,0.07)',
+              borderBottom: '1px solid rgba(138,180,160,0.2)',
               display: 'flex',
               alignItems: 'center',
               gap: '8px',
-              fontSize: '12px',
-              color: '#6ee7b7',
+              fontSize: '11px',
+              color: '#8ab4a0',
               flexShrink: 0,
+              letterSpacing: '0.03em',
             }}>
-              <CheckCircle size={14} color="#10b981" />
-              <span>Hiring workflow is running — <strong>check Workflow Monitor</strong> for live progress</span>
+              <CheckCircle size={14} color="#8ab4a0" />
+              <span>Hiring workflow is running — <strong style={{ color: '#EBDCC4' }}>check Workflow Monitor</strong> for live progress</span>
             </div>
           )}
 
@@ -558,10 +569,10 @@ export default function AIChatbot() {
               <div style={{
                 flex: 1, display: 'flex', flexDirection: 'column',
                 alignItems: 'center', justifyContent: 'center',
-                color: '#475569', fontSize: '13px', textAlign: 'center',
-                padding: '24px',
+                color: '#7A6A5E', fontSize: '12px', textAlign: 'center',
+                padding: '24px', letterSpacing: '0.08em', textTransform: 'uppercase',
               }}>
-                <MessageSquare size={32} color="#334155" style={{ marginBottom: '12px' }} />
+                <MessageSquare size={32} color="#35211A" style={{ marginBottom: '12px' }} />
                 <p style={{ margin: 0 }}>Starting AI Hiring Assistant...</p>
               </div>
             )}
@@ -587,14 +598,17 @@ export default function AIChatbot() {
                     }}
                     style={{
                       padding: '4px 10px',
-                      background: 'rgba(99,102,241,0.12)',
-                      border: '1px solid rgba(99,102,241,0.25)',
-                      borderRadius: '20px',
-                      color: '#a5b4fc',
-                      fontSize: '11px',
+                      background: 'rgba(220,159,133,0.08)',
+                      border: '1px solid rgba(220,159,133,0.25)',
+                      borderRadius: '4px',
+                      color: '#DC9F85',
+                      fontSize: '10px',
+                      fontWeight: 600,
                       cursor: 'pointer',
-                      fontFamily: 'Inter, system-ui, sans-serif',
+                      fontFamily: "'General Sans', 'Inter', sans-serif",
                       transition: 'all 0.15s',
+                      letterSpacing: '0.05em',
+                      textTransform: 'uppercase' as const,
                     }}
                   >
                     {hint}
@@ -608,13 +622,16 @@ export default function AIChatbot() {
                   onClick={() => setInputValue('confirm')}
                   style={{
                     padding: '4px 14px',
-                    background: 'rgba(16,185,129,0.1)',
-                    border: '1px solid rgba(16,185,129,0.3)',
-                    borderRadius: '20px',
-                    color: '#6ee7b7',
-                    fontSize: '11px',
+                    background: 'rgba(138,180,160,0.08)',
+                    border: '1px solid rgba(138,180,160,0.25)',
+                    borderRadius: '4px',
+                    color: '#8ab4a0',
+                    fontSize: '10px',
+                    fontWeight: 700,
                     cursor: 'pointer',
-                    fontFamily: 'Inter, system-ui, sans-serif',
+                    fontFamily: "'General Sans', 'Inter', sans-serif",
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase' as const,
                   }}
                 >
                   ✓ Confirm
@@ -623,13 +640,16 @@ export default function AIChatbot() {
                   onClick={() => setInputValue('Make changes to ')}
                   style={{
                     padding: '4px 14px',
-                    background: 'rgba(239,68,68,0.08)',
-                    border: '1px solid rgba(239,68,68,0.2)',
-                    borderRadius: '20px',
-                    color: '#fca5a5',
-                    fontSize: '11px',
+                    background: 'rgba(176,112,112,0.08)',
+                    border: '1px solid rgba(176,112,112,0.25)',
+                    borderRadius: '4px',
+                    color: '#b07070',
+                    fontSize: '10px',
+                    fontWeight: 700,
                     cursor: 'pointer',
-                    fontFamily: 'Inter, system-ui, sans-serif',
+                    fontFamily: "'General Sans', 'Inter', sans-serif",
+                    letterSpacing: '0.08em',
+                    textTransform: 'uppercase' as const,
                   }}
                 >
                   ✎ Edit
@@ -642,14 +662,14 @@ export default function AIChatbot() {
               <div style={{
                 display: 'flex', gap: '8px', marginBottom: '12px', alignItems: 'center'
               }}>
-                <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 500 }}>Download:</span>
+                <span style={{ fontSize: '10px', color: '#7A6A5E', fontWeight: 700, letterSpacing: '0.1em', textTransform: 'uppercase' }}>Download:</span>
                 <button onClick={downloadPDF} style={styles.downloadBtn}>
-                  <Download size={12} />
-                  PDF Format
+                  <Download size={11} />
+                  PDF
                 </button>
                 <button onClick={downloadDOCX} style={styles.downloadBtn}>
-                  <Download size={12} />
-                  Word (DOCX)
+                  <Download size={11} />
+                  Word
                 </button>
               </div>
             )}
@@ -671,12 +691,12 @@ export default function AIChatbot() {
                 style={{
                   flex: 1,
                   padding: '10px 14px',
-                  background: 'rgba(255,255,255,0.05)',
-                  border: '1px solid rgba(99,102,241,0.2)',
-                  borderRadius: '12px',
-                  color: '#e2e8f0',
+                  background: 'rgba(235,220,196,0.03)',
+                  border: '1px solid #35211A',
+                  borderRadius: '4px',
+                  color: '#EBDCC4',
                   fontSize: '13.5px',
-                  fontFamily: 'Inter, system-ui, sans-serif',
+                  fontFamily: "'General Sans', 'Inter', system-ui, sans-serif",
                   transition: 'border-color 0.2s, box-shadow 0.2s',
                   resize: 'none' as const,
                   height: inputHeight,
@@ -691,19 +711,20 @@ export default function AIChatbot() {
                 style={{
                   width: '40px',
                   height: '40px',
-                  borderRadius: '11px',
+                  borderRadius: '4px',
                   background: isLoading || !inputValue.trim()
-                    ? 'rgba(99,102,241,0.2)'
-                    : 'linear-gradient(135deg, #6366f1, #8b5cf6)',
-                  border: 'none',
-                  color: 'white',
+                    ? 'rgba(220,159,133,0.1)'
+                    : '#DC9F85',
+                  border: '1px solid',
+                  borderColor: isLoading || !inputValue.trim() ? '#35211A' : '#DC9F85',
+                  color: isLoading || !inputValue.trim() ? '#66473B' : '#181818',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: isLoading || !inputValue.trim() ? 'not-allowed' : 'pointer',
                   flexShrink: 0,
                   transition: 'all 0.2s ease',
-                  boxShadow: inputValue.trim() ? '0 4px 12px rgba(99,102,241,0.4)' : 'none',
+                  boxShadow: inputValue.trim() ? '0 4px 12px rgba(220,159,133,0.25)' : 'none',
                 }}
               >
                 {isLoading ? (
@@ -717,9 +738,11 @@ export default function AIChatbot() {
             {/* Footer hint */}
             <div style={{
               marginTop: '8px',
-              fontSize: '11px',
-              color: '#334155',
+              fontSize: '10px',
+              color: '#35211A',
               textAlign: 'center' as const,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
             }}>
               Powered by Gemini AI • Shift+Enter for newline
             </div>
@@ -730,15 +753,15 @@ export default function AIChatbot() {
       {/* ── Global CSS (Rendered statically outside the component to eliminate typing lag) ── */}
       <style>{`
         @keyframes chatPulse {
-          0%, 100% { box-shadow: 0 4px 24px rgba(99,102,241,0.5), 0 0 0 0 rgba(99,102,241,0.4); }
-          50% { box-shadow: 0 4px 32px rgba(99,102,241,0.7), 0 0 0 8px rgba(99,102,241,0); }
+          0%, 100% { box-shadow: 0 0 0 0 rgba(220,159,133,0.4); }
+          50% { box-shadow: 0 0 0 6px rgba(220,159,133,0); }
         }
         @keyframes typingDot {
-          0%, 60%, 100% { transform: translateY(0); opacity: 0.5; }
+          0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
           30% { transform: translateY(-5px); opacity: 1; }
         }
         @keyframes messageSlideIn {
-          from { opacity: 0; transform: translateY(10px); }
+          from { opacity: 0; transform: translateY(8px); }
           to { opacity: 1; transform: translateY(0); }
         }
         @keyframes panelSlideIn {
@@ -755,44 +778,58 @@ export default function AIChatbot() {
           background: transparent;
         }
         .chat-messages::-webkit-scrollbar-thumb {
-          background: rgba(99,102,241,0.3);
+          background: #35211A;
           border-radius: 2px;
+        }
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+          background: #66473B;
         }
         .chat-markdown p { margin: 0 0 8px 0; }
         .chat-markdown p:last-child { margin-bottom: 0; }
         .chat-markdown ul, .chat-markdown ol { margin: 6px 0 8px 16px; padding: 0; }
         .chat-markdown li { margin-bottom: 3px; }
-        .chat-markdown strong { color: #c4b5fd; font-weight: 600; }
-        .chat-markdown em { color: #a5b4fc; }
+        .chat-markdown strong { color: #DC9F85; font-weight: 600; }
+        .chat-markdown em { color: #B6A596; }
         .chat-markdown h1, .chat-markdown h2, .chat-markdown h3 { 
-          color: #e2e8f0; 
+          color: #EBDCC4; 
           margin: 10px 0 6px 0; 
           font-size: 13px;
           font-weight: 700;
+          font-family: 'Clash Grotesk', 'General Sans', sans-serif;
+          letter-spacing: 0.01em;
         }
         .chat-markdown hr {
           border: none;
-          border-top: 1px solid rgba(99,102,241,0.2);
+          border-top: 1px solid #35211A;
           margin: 10px 0;
         }
         .chat-markdown code {
-          background: rgba(99,102,241,0.15);
+          background: rgba(220,159,133,0.1);
+          border: 1px solid rgba(220,159,133,0.2);
           padding: 1px 5px;
-          border-radius: 4px;
+          border-radius: 2px;
           font-size: 12px;
+          color: #DC9F85;
         }
+        .chat-input::placeholder { color: #35211A; }
         .chat-input:focus {
           outline: none;
-          border-color: rgba(99,102,241,0.6) !important;
-          box-shadow: 0 0 0 3px rgba(99,102,241,0.1);
+          border-color: #66473B !important;
+          box-shadow: 0 0 0 3px rgba(220,159,133,0.06);
         }
         .send-btn:hover:not(:disabled) {
-          background: linear-gradient(135deg, #4f46e5, #7c3aed) !important;
-          transform: scale(1.05);
+          opacity: 0.85;
+          transform: scale(1.03);
         }
         .trigger-btn:hover {
-          transform: translateY(-2px) scale(1.02);
-          box-shadow: 0 8px 32px rgba(99,102,241,0.6) !important;
+          border-color: #DC9F85 !important;
+          color: #DC9F85 !important;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+        }
+        .chat-download-btn:hover {
+          border-color: #DC9F85 !important;
+          color: #DC9F85 !important;
         }
       `}</style>
     </>
