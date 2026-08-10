@@ -9,7 +9,6 @@ import {
   Loader2,
   Sparkles,
   CheckCircle,
-  Workflow,
   MessageSquare,
   Download,
 } from 'lucide-react'
@@ -27,28 +26,25 @@ interface LocalMessage {
 
 // ── Styles (inline for zero deps) ─────────────────────────────────────────────
 const styles = {
-  // Trigger button — Editorial warm style
+  // Trigger button — compact icon only
   trigger: {
     position: 'fixed' as const,
-    bottom: '28px',
-    right: '28px',
+    bottom: '24px',
+    right: '24px',
     zIndex: 9999,
+    width: '44px',
+    height: '44px',
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
-    padding: '12px 20px',
+    justifyContent: 'center',
     background: '#1E1A18',
     border: '1px solid #66473B',
     borderRadius: '4px',
-    color: '#EBDCC4',
-    fontFamily: "'General Sans', 'Inter', system-ui, sans-serif",
-    fontSize: '13px',
-    fontWeight: 600,
+    color: '#DC9F85',
     cursor: 'pointer',
-    boxShadow: '0 4px 24px rgba(0,0,0,0.6)',
+    boxShadow: '0 4px 20px rgba(0,0,0,0.55)',
     transition: 'all 0.2s ease',
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase' as const,
+    padding: 0,
   },
   // Chat panel
   panel: {
@@ -460,11 +456,11 @@ export default function AIChatbot() {
           title="Open AI Hiring Assistant"
         >
           <Bot size={20} />
-          <span>AI Hiring Assistant</span>
           {hasUnread && (
             <div style={{
-              width: '8px', height: '8px', borderRadius: '50%',
-              background: '#f59e0b', position: 'absolute', top: '8px', right: '8px',
+              width: '7px', height: '7px', borderRadius: '50%',
+              background: '#DC9F85', position: 'absolute', top: '6px', right: '6px',
+              boxShadow: '0 0 6px rgba(220,159,133,0.7)',
             }} />
           )}
         </button>
@@ -507,7 +503,7 @@ export default function AIChatbot() {
                 <span style={{ fontSize: '10px', color: isLoading ? '#DC9F85' : '#7A6A5E', fontWeight: isLoading ? 600 : 400, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
                   {isLoading ? 'Typing...' : workflowTriggered ? 'Workflow Running' : 'Online'}
                 </span>
-                {workflowTriggered && <Workflow size={11} color="#8ab4a0" />}
+                {workflowTriggered && <CheckCircle size={11} color="#8ab4a0" />}
               </div>
             </div>
             {/* Step badge */}
@@ -821,11 +817,14 @@ export default function AIChatbot() {
           opacity: 0.85;
           transform: scale(1.03);
         }
+        .trigger-btn {
+          position: relative;
+        }
         .trigger-btn:hover {
           border-color: #DC9F85 !important;
-          color: #DC9F85 !important;
-          transform: translateY(-2px);
-          box-shadow: 0 8px 32px rgba(0,0,0,0.5) !important;
+          background: #221D1A !important;
+          transform: translateY(-2px) scale(1.06);
+          box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
         }
         .chat-download-btn:hover {
           border-color: #DC9F85 !important;
