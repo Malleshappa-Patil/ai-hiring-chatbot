@@ -2,9 +2,9 @@ import { useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { jobsApi, workflowApi } from '@/api'
-import { Plus, Briefcase, CheckCircle, XCircle, Edit3, Play, Loader2, Trash2 } from 'lucide-react'
+import { Briefcase, CheckCircle, XCircle, Edit3, Play, Loader2, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
-import type { CreateJobRequest, Job } from '@/types'
+import type { Job } from '@/types'
 
 /* ── Editorial colour tokens ─────────────────────────────────── */
 const C = {
@@ -19,39 +19,10 @@ const C = {
   divider:  '#35211A',
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 14px',
-  background: 'rgba(235,220,196,0.04)',
-  border: `1px solid ${C.border}`,
-  borderRadius: '4px',
-  color: C.text,
-  fontSize: '13px',
-  fontFamily: "'General Sans','Inter',sans-serif",
-  outline: 'none',
-  boxSizing: 'border-box',
-  transition: 'border-color 0.15s',
-}
-
-const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '9px',
-  fontWeight: 700,
-  color: C.faint,
-  letterSpacing: '0.15em',
-  textTransform: 'uppercase',
-  marginBottom: '6px',
-}
 
 export default function JobManagement() {
   const qc = useQueryClient()
-  const [showCreate, setShowCreate] = useState(false)
   const [selectedJob, setSelectedJob] = useState<Job | null>(null)
-  const [form, setForm] = useState<CreateJobRequest>({
-    title: '', department: '', location: '', job_type: 'full_time',
-    experience_level: '', hiring_goal: '', target_candidate_count: 3,
-    application_open_days: 7,
-  })
 
   const { data: jobs, isLoading } = useQuery({
     queryKey: ['jobs'],
@@ -62,17 +33,6 @@ export default function JobManagement() {
     queryKey: ['jd', selectedJob?.id],
     queryFn: () => jobsApi.getJD(selectedJob!.id),
     enabled: !!selectedJob,
-  })
-
-  const createMutation = useMutation({
-    mutationFn: jobsApi.create,
-    onSuccess: () => {
-      toast.success('Job created! AI workflow starting...')
-      qc.invalidateQueries({ queryKey: ['jobs'] })
-      setShowCreate(false)
-      setForm({ title: '', department: '', location: '', job_type: 'full_time', experience_level: '', hiring_goal: '', target_candidate_count: 3, application_open_days: 7 })
-    },
-    onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to create job'),
   })
 
   const startWorkflowMutation = useMutation({
@@ -127,25 +87,9 @@ export default function JobManagement() {
             Job Management
           </h1>
           <p style={{ fontSize: '12px', color: C.faint, marginTop: '2px', letterSpacing: '0.01em' }}>
-            Create jobs and review AI-generated job descriptions
+            Review and manage AI-generated jobs — use the chatbot to create new ones
           </p>
         </div>
-        <button
-          onClick={() => setShowCreate(true)}
-          style={{
-            display: 'flex', alignItems: 'center', gap: '7px',
-            padding: '9px 16px',
-            background: C.accent, border: 'none', borderRadius: '4px',
-            color: C.bg, fontSize: '11px', fontWeight: 700,
-            letterSpacing: '0.1em', textTransform: 'uppercase',
-            cursor: 'pointer', fontFamily: "'General Sans','Inter',sans-serif",
-            transition: 'opacity 0.15s',
-          }}
-          onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.opacity = '0.85'}
-          onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.opacity = '1'}
-        >
-          <Plus size={14} /> New Job
-        </button>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: selectedJob ? '1fr 1fr' : '1fr', gap: '18px' }}>
@@ -314,120 +258,6 @@ export default function JobManagement() {
         )}
       </div>
 
-      {/* ── Create Job Modal ──────────────────────────────── */}
-      {showCreate && (
-        <div style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
-          backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center',
-          justifyContent: 'center', zIndex: 100, padding: '24px',
-        }}>
-          <div style={{
-            background: C.panel, border: `1px solid ${C.border}`,
-            borderRadius: '4px', padding: '32px', width: '100%', maxWidth: '520px',
-          }}>
-            <h2 style={{
-              fontSize: '16px', fontWeight: 700, color: C.text, marginBottom: '22px',
-              fontFamily: "'Clash Grotesk','General Sans',sans-serif", letterSpacing: '-0.01em',
-            }}>
-              Create New Job
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-              {[
-                { label: 'Job Title', field: 'title', placeholder: 'e.g. Senior Backend Engineer' },
-                { label: 'Department', field: 'department', placeholder: 'e.g. Engineering' },
-                { label: 'Location', field: 'location', placeholder: 'e.g. Remote / Bangalore' },
-                { label: 'Experience Level', field: 'experience_level', placeholder: 'e.g. 5+ years' },
-                { label: 'Hiring Goal', field: 'hiring_goal', placeholder: 'e.g. Hire a Senior Backend Engineer for our platform team' },
-              ].map(({ label, field, placeholder }) => (
-                <div key={field}>
-                  <label style={labelStyle}>{label}</label>
-                  {field === 'hiring_goal' ? (
-                    <textarea
-                      value={(form[field as keyof CreateJobRequest] || '') as string}
-                      onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-                      placeholder={placeholder}
-                      rows={3}
-                      style={{ ...inputStyle, resize: 'vertical' }}
-                      onFocus={e => e.currentTarget.style.borderColor = C.accent}
-                      onBlur={e => e.currentTarget.style.borderColor = C.border}
-                    />
-                  ) : (
-                    <input
-                      type="text"
-                      value={(form[field as keyof CreateJobRequest] || '') as string}
-                      onChange={e => setForm(p => ({ ...p, [field]: e.target.value }))}
-                      placeholder={placeholder}
-                      style={inputStyle}
-                      onFocus={e => e.currentTarget.style.borderColor = C.accent}
-                      onBlur={e => e.currentTarget.style.borderColor = C.border}
-                    />
-                  )}
-                </div>
-              ))}
-
-              <div>
-                <label style={labelStyle}>Target Candidate Count</label>
-                <input
-                  type="number" min={1} max={50}
-                  value={form.target_candidate_count ?? 3}
-                  onChange={e => setForm(p => ({ ...p, target_candidate_count: parseInt(e.target.value) || 1 }))}
-                  style={inputStyle}
-                  onFocus={e => e.currentTarget.style.borderColor = C.accent}
-                  onBlur={e => e.currentTarget.style.borderColor = C.border}
-                />
-              </div>
-              <div>
-                <label style={labelStyle}>Application Open Days</label>
-                <input
-                  type="number" min={1} max={90}
-                  value={form.application_open_days ?? 7}
-                  onChange={e => setForm(p => ({ ...p, application_open_days: parseInt(e.target.value) || 1 }))}
-                  style={inputStyle}
-                  onFocus={e => e.currentTarget.style.borderColor = C.accent}
-                  onBlur={e => e.currentTarget.style.borderColor = C.border}
-                />
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', gap: '10px', marginTop: '22px' }}>
-              <button
-                onClick={() => setShowCreate(false)}
-                style={{
-                  flex: 1, padding: '10px',
-                  background: 'transparent', border: `1px solid ${C.divider}`,
-                  borderRadius: '4px', color: C.faint,
-                  cursor: 'pointer', fontSize: '11px', fontWeight: 700,
-                  letterSpacing: '0.1em', textTransform: 'uppercase',
-                  fontFamily: "'General Sans','Inter',sans-serif",
-                }}
-              >Cancel</button>
-              <button
-                id="submit-create-job-btn"
-                onClick={() => {
-                  if (!form.title || !form.department || !form.location || !form.experience_level || !form.hiring_goal) {
-                    toast.error('Please fill in all details'); return
-                  }
-                  createMutation.mutate(form)
-                }}
-                disabled={createMutation.isPending}
-                style={{
-                  flex: 2, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                  padding: '10px',
-                  background: createMutation.isPending ? C.divider : C.accent,
-                  border: 'none', borderRadius: '4px',
-                  color: C.bg, fontSize: '11px', fontWeight: 700,
-                  letterSpacing: '0.1em', textTransform: 'uppercase',
-                  cursor: createMutation.isPending ? 'not-allowed' : 'pointer',
-                  fontFamily: "'General Sans','Inter',sans-serif",
-                }}
-              >
-                {createMutation.isPending ? <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> : <Play size={14} />}
-                Create & Start Workflow
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <style>{`
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
