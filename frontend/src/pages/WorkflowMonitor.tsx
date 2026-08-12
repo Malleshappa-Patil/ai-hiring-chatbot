@@ -323,6 +323,8 @@ export default function WorkflowMonitor() {
   const [pan, setPan] = useState({ x: 20, y: 30 })
   const [isPanning, setIsPanning] = useState(false)
   const [activeTab, setActiveTab] = useState<'graph' | 'logs'>('graph')
+  const [logSearch, setLogSearch] = useState('')
+  const [logFilter, setLogFilter] = useState<'all' | 'success' | 'failure'>('all')
   const panStart = useRef({ mx: 0, my: 0, px: 0, py: 0 })
   const canvasRef = useRef<HTMLDivElement>(null)
   const qc = useQueryClient()
@@ -488,6 +490,20 @@ export default function WorkflowMonitor() {
 
   const allLogs: AgentLog[] = logs ? [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) : []
 
+  const filteredLogs = allLogs.filter(l => {
+    if (logFilter !== 'all' && l.status !== logFilter) return false
+    if (logSearch) {
+      const q = logSearch.toLowerCase()
+      const matchAgent = l.agent_name?.toLowerCase().includes(q)
+      const matchAction = l.action?.toLowerCase().includes(q)
+      const matchInput = l.input_summary?.toLowerCase().includes(q)
+      const matchOutput = l.output_summary?.toLowerCase().includes(q)
+      const matchMsg = (l as any).message?.toLowerCase().includes(q)
+      return matchAgent || matchAction || matchInput || matchOutput || matchMsg
+    }
+    return true
+  })
+
   const formatTs = (ts: string) => {
     try {
       const d = new Date(ts)
@@ -652,8 +668,133 @@ export default function WorkflowMonitor() {
             {/* Canvas + Detail panel OR Execution Log Timeline */}
             <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
 
-              {/* SVG Canvas */}
-              <div
+              {activeTab === 'logs' ? (
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#181818', padding: '20px' }}>
+                  {/* Filter bar */}
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, maxWidth: 400, background: '#1E1A18', border: '1px solid #66473B', borderRadius: 4, padding: '6px 12px' }}>
+                      <Search size={14} color="#7A6A5E" />
+                      <input
+                        type="text"
+                        placeholder="Filter logs by agent, action, or payload..."
+                        value={logSearch}
+                        onChange={e => setLogSearch(e.target.value)}
+                        style={{ background: 'transparent', border: 'none', color: '#EBDCC4', fontSize: '12px', outline: 'none', width: '100%', fontFamily: "'General Sans', sans-serif" }}
+                      />
+                      {logSearch && (
+                        <button onClick={() => setLogSearch('')} style={{ background: 'none', border: 'none', color: '#7A6A5E', cursor: 'pointer', padding: 0 }}>
+                          <X size={12} />
+                        </button>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ fontSize: '11px', color: '#7A6A5E', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Status:</div>
+                      {(['all', 'success', 'failure'] as const).map(st => (
+                        <button
+                          key={st}
+                          onClick={() => setLogFilter(st)}
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: 4,
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.08em',
+                            background: logFilter === st ? '#DC9F85' : '#221D1A',
+                            color: logFilter === st ? '#181818' : '#B6A596',
+                            border: logFilter === st ? 'none' : '1px solid #35211A',
+                            transition: 'all 0.15s',
+                            fontFamily: "'General Sans', sans-serif",
+                          }}
+                        >
+                          {st}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Log list */}
+                  <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', paddingRight: '4px' }}>
+                    {filteredLogs.length === 0 ? (
+                      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#7A6A5E', padding: '40px' }}>
+                        <ClipboardList size={36} style={{ marginBottom: 12, opacity: 0.3 }} />
+                        <p style={{ fontSize: 13, color: '#B6A596', margin: 0 }}>
+                          {allLogs.length === 0 ? 'No execution logs recorded yet for this workflow.' : 'No logs match your filter criteria.'}
+                        </p>
+                      </div>
+                    ) : (
+                      filteredLogs.map(log => {
+                        const isSuccess = log.status === 'success' || !log.status
+                        return (
+                          <div key={log.id} style={{ background: '#1E1A18', border: `1px solid ${isSuccess ? '#35211A' : 'rgba(176,112,112,0.3)'}`, borderRadius: 4, padding: '14px 16px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <span style={{ fontSize: '11px', fontWeight: 700, color: '#DC9F85', background: 'rgba(220,159,133,0.1)', padding: '2px 8px', borderRadius: 4, border: '1px solid #66473B' }}>
+                                  🤖 {log.agent_name || 'Agent'}
+                                </span>
+                                <span style={{ fontSize: '12px', fontWeight: 600, color: '#EBDCC4' }}>
+                                  {log.action}
+                                </span>
+                              </div>
+
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                {log.latency_ms > 0 && (
+                                  <span style={{ fontSize: '10px', color: '#7A6A5E' }}>
+                                    ⚡ {log.latency_ms}ms
+                                  </span>
+                                )}
+                                {log.token_usage > 0 && (
+                                  <span style={{ fontSize: '10px', color: '#7A6A5E' }}>
+                                    🪙 {log.token_usage} tokens
+                                  </span>
+                                )}
+                                <span style={{
+                                  fontSize: '9px', fontWeight: 700, padding: '2px 6px', borderRadius: 3, textTransform: 'uppercase', letterSpacing: '0.08em',
+                                  background: isSuccess ? 'rgba(138,180,160,0.1)' : 'rgba(176,112,112,0.1)',
+                                  color: isSuccess ? '#8ab4a0' : '#b07070',
+                                  border: `1px solid ${isSuccess ? 'rgba(138,180,160,0.3)' : 'rgba(176,112,112,0.3)'}`
+                                }}>
+                                  {isSuccess ? 'SUCCESS' : 'FAILURE'}
+                                </span>
+                                <span style={{ fontSize: '11px', color: '#7A6A5E' }}>
+                                  {formatTs(log.created_at)}
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Payload details if present */}
+                            {(log.input_summary || log.output_summary || (log as any).message) && (
+                              <div style={{ display: 'grid', gridTemplateColumns: (log.input_summary && (log.output_summary || (log as any).message)) ? '1fr 1fr' : '1fr', gap: '10px', marginTop: '10px' }}>
+                                {log.input_summary && (
+                                  <div style={{ background: '#221D1A', border: '1px solid #35211A', padding: '8px 12px', borderRadius: 4 }}>
+                                    <div style={{ fontSize: 9, fontWeight: 700, color: '#7A6A5E', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>Input Summary</div>
+                                    <div style={{ fontSize: 11, color: '#B6A596', fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: 120, overflowY: 'auto' }}>
+                                      {log.input_summary}
+                                    </div>
+                                  </div>
+                                )}
+                                {(log.output_summary || (log as any).message) && (
+                                  <div style={{ background: '#221D1A', border: '1px solid #35211A', padding: '8px 12px', borderRadius: 4 }}>
+                                    <div style={{ fontSize: 9, fontWeight: 700, color: '#7A6A5E', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 4 }}>Output / Message</div>
+                                    <div style={{ fontSize: 11, color: '#EBDCC4', fontFamily: 'monospace', whiteSpace: 'pre-wrap', maxHeight: 120, overflowY: 'auto' }}>
+                                      {log.output_summary || (log as any).message}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* SVG Canvas */}
+                  <div
                 ref={canvasRef}
                 onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
@@ -888,7 +1029,7 @@ export default function WorkflowMonitor() {
                               <span>{log.action}</span>
                               <span>{formatTs(log.created_at)}</span>
                             </div>
-                            <div style={{ color: '#B6A596' }}>{log.message}</div>
+                            <div style={{ color: '#B6A596' }}>{log.output_summary || (log as any).message || log.action}</div>
                           </div>
                         ))}
                       </div>
@@ -896,11 +1037,12 @@ export default function WorkflowMonitor() {
                   </div>
                 </div>
               )}
-
-            </div>
-          </>
-        )}
-      </div>
+            </>
+          )}
+        </div>
+      </>
+    )}
+  </div>
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
