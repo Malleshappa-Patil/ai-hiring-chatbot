@@ -5,7 +5,7 @@
  
 --- 
  
-## 🏗️ Architecture
+## 🏗️ Architecture 
  
 | Layer | Technology |
 |---|---|
