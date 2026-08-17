@@ -329,7 +329,7 @@ export default function Layout() {
         marginLeft: collapsed ? '64px' : '240px',
         transition: 'margin-left 0.22s ease',
         height: '100vh',
-        overflow: 'hidden',
+        overflow: 'auto',
         display: 'flex',
         flexDirection: 'column',
         position: 'relative',
@@ -337,6 +337,7 @@ export default function Layout() {
       }}>
         <Outlet />
       </main>
+
 
       {/* ── AI Chatbot (Recruiter only) ───────────────────────── */}
       {!isAdmin && <AIChatbot />}
