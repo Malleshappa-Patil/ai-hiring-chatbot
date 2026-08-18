@@ -10,7 +10,7 @@
 | Layer | Technology |
 |---|---|
 | AI Orchestration | LangGraph (multi-agent graph) |
-| LLM | Google Gemini (`gemini-1.5-pro`) |
+| LLM | Google Gemini (`gemini-2.5-flash`) |
 | Embeddings | HuggingFace `sentence-transformers/all-MiniLM-L6-v2` |
 | RAG | LangChain + ChromaDB |
 | Resume Parsing | PyMuPDF + Unstructured |
