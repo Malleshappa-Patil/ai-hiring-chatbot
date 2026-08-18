@@ -207,12 +207,12 @@ const jobStatusLabel: Record<JobStatus, string> = {
 }
 
 /* ─── Layout constants ───────────────────────────────────── */
-const NW = 220    // node width
-const NH = 90     // node height
-const COL_W = 270 // column pitch
-const ROW_H = 150 // row pitch
-const PAD_X = 60
-const PAD_Y = 60
+const NW = 200    // node width
+const NH = 84     // node height
+const COL_W = 300 // column pitch (more breathing room)
+const ROW_H = 200 // row pitch (room for edges)
+const PAD_X = 80
+const PAD_Y = 80
 
 const COLS = 5
 const ROWS = 4
@@ -235,72 +235,126 @@ function edgeStyle(type: EdgeDef['type'], fromState: StageState) {
   }
 }
 
-/* ─── Edge path routing ──────────────────────────────────── */
+/* ─── Edge path routing (orthogonal with rounded corners) ── */
 function buildEdgePath(from: NodeDef, to: NodeDef, type: EdgeDef['type']): string {
-  const fx = colX(from.col) + NW / 2
-  const fy = rowY(from.row) + NH / 2
-  const tx = colX(to.col) + NW / 2
-  const ty = rowY(to.row) + NH / 2
+  const R = 14 // corner radius
 
-  // 1. Horizontal flow on same row
-  if (from.row === to.row) {
-    if (from.col < to.col) {
-      const x1 = colX(from.col) + NW
-      const x2 = colX(to.col)
-      return `M ${x1} ${fy} L ${x2} ${ty}`
-    } else {
-      const x1 = colX(from.col)
-      const x2 = colX(to.col) + NW
-      return `M ${x1} ${fy} L ${x2} ${ty}`
-    }
-  }
-
-  // 2. Vertical flow on same column
-  if (from.col === to.col) {
-    if (from.row < to.row) {
-      const y1 = rowY(from.row) + NH
-      const y2 = rowY(to.row)
-      return `M ${fx} ${y1} L ${tx} ${y2}`
-    } else {
-      const y1 = rowY(from.row)
-      const y2 = rowY(to.row) + NH
-      return `M ${fx} ${y1} L ${tx} ${y2}`
-    }
-  }
-
-  // 3. Special case: loop back from wait_loop (0,1) to monitoring (3,1)
+  // Special: wait_loop → monitoring (long arc above the row)
   if (from.id === 'wait_loop' && to.id === 'monitoring') {
     const x1 = colX(from.col) + NW / 2
     const y1 = rowY(from.row)
     const x2 = colX(to.col) + NW / 2
     const y2 = rowY(to.row)
-    const arcY = rowY(from.row) - 40
+    const arcY = y1 - 60
     return `M ${x1} ${y1} C ${x1} ${arcY}, ${x2} ${arcY}, ${x2} ${y2}`
   }
 
-  // 4. General diagonal flow (bezier)
+  // Same row — horizontal
+  if (from.row === to.row) {
+    const y = rowY(from.row) + NH / 2
+    if (from.col < to.col) {
+      return `M ${colX(from.col) + NW} ${y} L ${colX(to.col)} ${y}`
+    } else {
+      // Backward same-row: route below the row with U-bend
+      if (Math.abs(from.col - to.col) > 1) {
+        const x1 = colX(from.col) + NW / 2
+        const y1 = rowY(from.row) + NH
+        const x2 = colX(to.col) + NW / 2
+        const belowY = y1 + 36
+        return [
+          `M ${x1} ${y1}`,
+          `L ${x1} ${belowY - R}`,
+          `Q ${x1} ${belowY} ${x1 - R} ${belowY}`,
+          `L ${x2 + R} ${belowY}`,
+          `Q ${x2} ${belowY} ${x2} ${belowY - R}`,
+          `L ${x2} ${y1}`,
+        ].join(' ')
+      }
+      return `M ${colX(from.col)} ${y} L ${colX(to.col) + NW} ${y}`
+    }
+  }
+
+  // Same column — vertical
+  if (from.col === to.col) {
+    const x = colX(from.col) + NW / 2
+    if (from.row < to.row) {
+      return `M ${x} ${rowY(from.row) + NH} L ${x} ${rowY(to.row)}`
+    } else {
+      return `M ${x} ${rowY(from.row)} L ${x} ${rowY(to.row) + NH}`
+    }
+  }
+
+  // Cross-row, cross-column → orthogonal L-path with rounded corner
   if (from.row < to.row) {
+    const x1 = colX(from.col) + NW / 2
     const y1 = rowY(from.row) + NH
+    const x2 = colX(to.col) + NW / 2
     const y2 = rowY(to.row)
     const midY = (y1 + y2) / 2
-    return `M ${fx} ${y1} C ${fx} ${midY}, ${tx} ${midY}, ${tx} ${y2}`
+    const dx = x2 > x1 ? R : -R
+    return [
+      `M ${x1} ${y1}`,
+      `L ${x1} ${midY - R}`,
+      `Q ${x1} ${midY} ${x1 + dx} ${midY}`,
+      `L ${x2 - dx} ${midY}`,
+      `Q ${x2} ${midY} ${x2} ${midY + R}`,
+      `L ${x2} ${y2}`,
+    ].join(' ')
   } else {
+    const x1 = colX(from.col) + NW / 2
     const y1 = rowY(from.row)
+    const x2 = colX(to.col) + NW / 2
     const y2 = rowY(to.row) + NH
     const midY = (y1 + y2) / 2
-    return `M ${fx} ${y1} C ${fx} ${midY}, ${tx} ${midY}, ${tx} ${y2}`
+    const dx = x2 > x1 ? R : -R
+    return [
+      `M ${x1} ${y1}`,
+      `L ${x1} ${midY + R}`,
+      `Q ${x1} ${midY} ${x1 + dx} ${midY}`,
+      `L ${x2 - dx} ${midY}`,
+      `Q ${x2} ${midY} ${x2} ${midY - R}`,
+      `L ${x2} ${y2}`,
+    ].join(' ')
   }
 }
 
-function edgeMid(from: NodeDef, to: NodeDef, type: EdgeDef['type']): { x: number; y: number } {
+function edgeMid(from: NodeDef, to: NodeDef, _type: EdgeDef['type']): { x: number; y: number } {
   if (from.id === 'wait_loop' && to.id === 'monitoring') {
-    return { x: (colX(from.col) + colX(to.col)) / 2 + NW / 2, y: rowY(from.row) - 40 }
+    return { x: (colX(from.col) + colX(to.col)) / 2 + NW / 2, y: rowY(from.row) - 60 }
   }
-  const fx = colX(from.col) + NW / 2
-  const fy = rowY(from.row) + NH / 2
-  const tx = colX(to.col) + NW / 2
-  const ty = rowY(to.row) + NH / 2
-  return { x: (fx + tx) / 2, y: (fy + ty) / 2 }
+
+  // Same row
+  if (from.row === to.row) {
+    const y = rowY(from.row) + NH / 2
+    if (from.col < to.col) {
+      return { x: (colX(from.col) + NW + colX(to.col)) / 2, y }
+    } else {
+      if (Math.abs(from.col - to.col) > 1) {
+        // U-bend below: label at bottom of the arc
+        return { x: (colX(from.col) + colX(to.col) + NW) / 2, y: rowY(from.row) + NH + 36 }
+      }
+      return { x: (colX(from.col) + colX(to.col) + NW) / 2, y }
+    }
+  }
+
+  // Same column
+  if (from.col === to.col) {
+    const x = colX(from.col) + NW / 2
+    if (from.row < to.row) {
+      return { x, y: (rowY(from.row) + NH + rowY(to.row)) / 2 }
+    } else {
+      return { x, y: (rowY(from.row) + rowY(to.row) + NH) / 2 }
+    }
+  }
+
+  // Cross-row diagonal: midpoint at the bend
+  if (from.row < to.row) {
+    const midY = (rowY(from.row) + NH + rowY(to.row)) / 2
+    return { x: (colX(from.col) + colX(to.col)) / 2 + NW / 2, y: midY }
+  } else {
+    const midY = (rowY(from.row) + rowY(to.row) + NH) / 2
+    return { x: (colX(from.col) + colX(to.col)) / 2 + NW / 2, y: midY }
+  }
 }
 
 function stateColors(state: StageState) {
@@ -319,8 +373,9 @@ export default function WorkflowMonitor() {
   const [selectedNode, setSelectedNode] = useState<NodeDef | null>(null)
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [dashOffset, setDashOffset] = useState(0)
-  const [zoom, setZoom] = useState(0.82)
-  const [pan, setPan] = useState({ x: 20, y: 30 })
+  const [zoom, setZoom] = useState(0.72)
+  const [pan, setPan] = useState({ x: 10, y: 10 })
+  const [hasFit, setHasFit] = useState(false)
   const [isPanning, setIsPanning] = useState(false)
   const [activeTab, setActiveTab] = useState<'graph' | 'logs'>('graph')
   const [logSearch, setLogSearch] = useState('')
@@ -365,6 +420,27 @@ export default function WorkflowMonitor() {
     const id = setInterval(() => setDashOffset(v => (v - 1) % 24), 50)
     return () => clearInterval(id)
   }, [])
+
+  /* Auto-fit graph to viewport on first job selection */
+  useEffect(() => {
+    if (!canvasRef.current || !selectedJobId) return
+    // Small delay so DOM layout settles
+    const timer = setTimeout(() => {
+      if (!canvasRef.current) return
+      const rect = canvasRef.current.getBoundingClientRect()
+      const scaleX = rect.width / CANVAS_W
+      const scaleY = rect.height / CANVAS_H
+      const fitZoom = Math.min(scaleX, scaleY) * 0.90
+      setZoom(fitZoom)
+      setPan({
+        x: (rect.width - CANVAS_W * fitZoom) / 2,
+        y: (rect.height - CANVAS_H * fitZoom) / 2,
+      })
+      setHasFit(true)
+    }, 80)
+    return () => clearTimeout(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedJobId, hasFit])
 
   const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     e.preventDefault()
@@ -832,23 +908,28 @@ export default function WorkflowMonitor() {
                       </marker>
                     </defs>
 
-                    {/* Dot Grid */}
-                    {Array.from({ length: Math.ceil(CANVAS_H / 30) }, (_, ri) =>
-                      Array.from({ length: Math.ceil(CANVAS_W / 30) }, (_, ci) => (
-                        <circle key={`d${ri}-${ci}`} cx={ci * 30 + 15} cy={ri * 30 + 15} r={0.8} fill="#35211A" />
+                    {/* Subtle dot grid */}
+                    {Array.from({ length: Math.ceil(CANVAS_H / 36) }, (_, ri) =>
+                      Array.from({ length: Math.ceil(CANVAS_W / 36) }, (_, ci) => (
+                        <circle key={`d${ri}-${ci}`} cx={ci * 36 + 18} cy={ri * 36 + 18} r={0.6} fill="#2A2320" />
                       ))
                     )}
 
-                    {/* Phase Swimlanes */}
+                    {/* ── Phase Swimlane Bands ──────────────────── */}
                     {PHASES.map(p => {
-                      const py = rowY(p.row) - 20
-                      const ph = ROW_H - 10
+                      const bandY = rowY(p.row) - 30
+                      const bandH = ROW_H + 10
                       return (
                         <g key={p.title}>
-                          <rect x={PAD_X - 20} y={py} width={CANVAS_W - PAD_X * 2 + 40} height={ph} rx={4}
-                            fill={p.row % 2 === 0 ? 'rgba(235,220,196,0.015)' : 'rgba(220,159,133,0.01)'}
-                            stroke="#35211A" strokeDasharray="4 4" strokeWidth={0.8} />
-                          <text x={PAD_X - 10} y={py + 16} fontSize={8.5} fill="#7A6A5E" fontWeight="700" fontFamily="General Sans,sans-serif" letterSpacing="1.2">
+                          {/* Full-width tinted band */}
+                          <rect x={0} y={bandY} width={CANVAS_W} height={bandH} rx={0}
+                            fill={p.row % 2 === 0 ? 'rgba(235,220,196,0.018)' : 'rgba(220,159,133,0.012)'} />
+                          {/* Top separator line */}
+                          <line x1={PAD_X - 30} y1={bandY} x2={CANVAS_W - PAD_X + 30} y2={bandY}
+                            stroke="#35211A" strokeWidth={0.8} />
+                          {/* Phase label — top left of band */}
+                          <text x={PAD_X - 20} y={bandY + 16} fontSize={9.5} fill="#7A6A5E" fontWeight="700"
+                            fontFamily="General Sans,sans-serif" letterSpacing="1.5" opacity={0.85}>
                             {p.title}
                           </text>
                         </g>
@@ -905,6 +986,7 @@ export default function WorkflowMonitor() {
                       const nx = colX(node.col)
                       const ny = rowY(node.row)
                       const typeIsHuman = node.agentType === 'human'
+                      const isRunning = state === 'running'
 
                       return (
                         <g key={node.id}
@@ -914,46 +996,61 @@ export default function WorkflowMonitor() {
                           onMouseLeave={() => setHoveredNodeId(null)}
                           style={{ cursor: 'pointer' }}
                         >
-                          {/* Selection Outline */}
-                          {isSel && (
-                            <rect x={-2} y={-2} width={NW + 4} height={NH + 4} rx={6} fill="none"
-                              stroke="#DC9F85" strokeWidth={1.5} opacity={1} />
+                          {/* Animated dashed glow for running nodes */}
+                          {isRunning && (
+                            <rect x={-5} y={-5} width={NW + 10} height={NH + 10} rx={9}
+                              fill="none" stroke="#DC9F85" strokeWidth={1.2} opacity={0.35}
+                              strokeDasharray="6 4" strokeDashoffset={dashOffset} />
                           )}
 
-                          {/* Node Box */}
-                          <rect x={0} y={0} width={NW} height={NH} rx={4}
-                            fill={isSel ? '#221D1A' : isHov ? '#221D1A' : '#1E1A18'}
+                          {/* Selection outline */}
+                          {isSel && (
+                            <rect x={-3} y={-3} width={NW + 6} height={NH + 6} rx={8} fill="none"
+                              stroke="#DC9F85" strokeWidth={2} opacity={0.8} />
+                          )}
+
+                          {/* Node background */}
+                          <rect x={0} y={0} width={NW} height={NH} rx={6}
+                            fill={isSel ? '#252018' : isHov ? '#241F1B' : '#1E1A18'}
                             stroke={isSel ? '#DC9F85' : isHov ? '#66473B' : c.border}
                             strokeWidth={isSel ? 1.5 : 1}
                           />
 
-                          {/* Left Accent Strip */}
-                          <rect x={0} y={8} width={3} height={NH - 16} rx={1}
-                            fill={c.stroke} opacity={state === 'idle' ? 0.3 : 1} />
+                          {/* Left accent bar */}
+                          <rect x={1} y={8} width={3} height={NH - 16} rx={1.5}
+                            fill={c.stroke} opacity={state === 'idle' ? 0.25 : 1} />
 
-                          {/* Step Number Badge */}
-                          <rect x={10} y={8} width={18} height={14} rx={3} fill="rgba(235,220,196,0.05)" border="1px solid #35211A" />
-                          <text x={19} y={18} textAnchor="middle" fontSize={8.5} fontWeight="700" fill="#B6A596" fontFamily="General Sans,sans-serif">
+                          {/* Step number circle */}
+                          <circle cx={24} cy={18} r={11} fill="rgba(235,220,196,0.05)" stroke={c.border} strokeWidth={0.7} />
+                          <text x={24} y={22} textAnchor="middle" fontSize={9.5} fontWeight="700"
+                            fill={state === 'idle' ? '#5A4E44' : '#EBDCC4'} fontFamily="General Sans,sans-serif">
                             {node.stepNum}
                           </text>
 
-                          {/* Agent Type Badge */}
-                          <rect x={NW - 56} y={7} width={48} height={15} rx={3}
-                            fill="rgba(220,159,133,0.08)" stroke="#66473B" strokeWidth={0.8} />
-                          <text x={NW - 32} y={17} textAnchor="middle" fontSize={8} fill={typeIsHuman ? '#B6A596' : '#DC9F85'} fontWeight="700" fontFamily="General Sans,sans-serif">
-                            {typeIsHuman ? '👤 HUMAN' : '🤖 AI'}
+                          {/* Agent type pill */}
+                          <rect x={NW - 50} y={9} width={40} height={18} rx={9}
+                            fill={typeIsHuman ? 'rgba(182,165,150,0.1)' : 'rgba(220,159,133,0.08)'}
+                            stroke={typeIsHuman ? 'rgba(182,165,150,0.25)' : 'rgba(102,71,59,0.6)'} strokeWidth={0.6} />
+                          <text x={NW - 30} y={21} textAnchor="middle" fontSize={7.5}
+                            fill={typeIsHuman ? '#B6A596' : '#DC9F85'} fontWeight="700"
+                            fontFamily="General Sans,sans-serif" letterSpacing="0.6">
+                            {typeIsHuman ? 'HUMAN' : 'AI'}
                           </text>
 
-                          {/* Node Title & Details */}
-                          <text x={12} y={NH / 2 + 1} fontSize={12} fontWeight="700"
+                          {/* Title */}
+                          <text x={14} y={NH / 2 + 2} fontSize={12.5} fontWeight="700"
                             fill={state === 'idle' ? '#7A6A5E' : '#EBDCC4'}
                             fontFamily="'Clash Grotesk','General Sans',sans-serif">{node.shortTitle}</text>
 
-                          <text x={12} y={NH / 2 + 15} fontSize={10} fill={state === 'idle' ? '#7A6A5E' : '#B6A596'}
+                          {/* Agent name */}
+                          <text x={14} y={NH / 2 + 16} fontSize={10} fill={state === 'idle' ? '#5A4E44' : '#B6A596'}
                             fontFamily="General Sans,sans-serif">{node.agentName}</text>
 
-                          <text x={12} y={NH / 2 + 28} fontSize={9.5} fill={c.text} fontWeight="600"
-                            fontFamily="General Sans,sans-serif">● {c.badge}</text>
+                          {/* Status dot + badge */}
+                          <circle cx={18} cy={NH - 13} r={3.5}
+                            fill={c.stroke} opacity={state === 'idle' ? 0.25 : 1} />
+                          <text x={26} y={NH - 9.5} fontSize={9.5} fill={c.text} fontWeight="600"
+                            fontFamily="General Sans,sans-serif">{c.badge}</text>
                         </g>
                       )
                     })}
@@ -966,8 +1063,8 @@ export default function WorkflowMonitor() {
                     style={{ width: 28, height: 28, borderRadius: 4, background: '#1E1A18', border: '1px solid #66473B', color: '#EBDCC4', cursor: 'pointer', fontWeight: 700 }}>+</button>
                   <button onClick={() => setZoom(z => Math.max(0.3, z * 0.85))}
                     style={{ width: 28, height: 28, borderRadius: 4, background: '#1E1A18', border: '1px solid #66473B', color: '#EBDCC4', cursor: 'pointer', fontWeight: 700 }}>-</button>
-                  <button onClick={() => { setZoom(0.82); setPan({ x: 20, y: 30 }) }}
-                    style={{ width: 28, height: 28, borderRadius: 4, background: '#1E1A18', border: '1px solid #66473B', color: '#EBDCC4', cursor: 'pointer', fontSize: 11 }} title="Reset view">⟲</button>
+                  <button onClick={() => { setHasFit(false) }}
+                    style={{ width: 28, height: 28, borderRadius: 4, background: '#1E1A18', border: '1px solid #66473B', color: '#EBDCC4', cursor: 'pointer', fontSize: 11 }} title="Fit to view">⟲</button>
                 </div>
               </div>
 
