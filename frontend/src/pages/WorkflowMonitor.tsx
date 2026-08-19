@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { workflowApi, jobsApi } from '@/api'
+import { workflowApi, jobsApi, candidatesApi, interviewsApi } from '@/api'
 import {
   GitBranch, Activity, CheckCircle2, XCircle, AlertCircle, Loader2,
   Briefcase, RefreshCw, ClipboardList, FileText, UserCheck, Send,
@@ -359,13 +359,16 @@ function edgeMid(from: NodeDef, to: NodeDef, _type: EdgeDef['type']): { x: numbe
 
 function stateColors(state: StageState) {
   switch (state) {
-    case 'completed':        return { stroke: '#8ab4a0', bg: 'rgba(107,158,126,0.1)',  border: 'rgba(107,158,126,0.4)', text: '#8ab4a0', badge: 'Completed'        }
-    case 'running':          return { stroke: '#DC9F85', bg: 'rgba(220,159,133,0.12)', border: '#DC9F85',             text: '#DC9F85', badge: 'Running'          }
-    case 'waiting_approval': return { stroke: '#DC9F85', bg: 'rgba(220,159,133,0.1)',  border: 'rgba(220,159,133,0.4)',text: '#EBDCC4', badge: 'Awaiting Approval' }
-    case 'failed':           return { stroke: '#B6A596', bg: 'rgba(182,165,150,0.08)', border: '#66473B',             text: '#B6A596', badge: 'Failed'            }
-    default:                 return { stroke: '#7A6A5E', bg: '#1E1A18',               border: '#35211A',             text: '#7A6A5E', badge: 'Pending'           }
+    // ✅ Green ONLY for completed
+    case 'completed':        return { stroke: '#4ade80', bg: 'rgba(74,222,128,0.08)',  border: 'rgba(74,222,128,0.35)', text: '#4ade80', badge: 'Completed'        }
+    // All other states — keep existing warm/neutral palette
+    case 'running':          return { stroke: '#DC9F85', bg: 'rgba(220,159,133,0.12)', border: '#DC9F85',              text: '#DC9F85', badge: 'Running'          }
+    case 'waiting_approval': return { stroke: '#DC9F85', bg: 'rgba(220,159,133,0.1)',  border: 'rgba(220,159,133,0.4)', text: '#EBDCC4', badge: 'Awaiting Approval' }
+    case 'failed':           return { stroke: '#B6A596', bg: 'rgba(182,165,150,0.08)', border: '#66473B',              text: '#B6A596', badge: 'Failed'            }
+    default:                 return { stroke: '#7A6A5E', bg: '#1E1A18',                border: '#35211A',              text: '#7A6A5E', badge: 'Pending'           }
   }
 }
+
 
 /* ─── Component ──────────────────────────────────────────── */
 export default function WorkflowMonitor() {
@@ -405,6 +408,59 @@ export default function WorkflowMonitor() {
     refetchInterval: 5000,
     retry: false,
   })
+
+  // Candidate Shortlist & Interview Approval state
+  const [scheduleModalCandidate, setScheduleModalCandidate] = useState<{ id: string; name: string; email: string } | null>(null)
+  const [interviewDate, setInterviewDate] = useState(() => {
+    const tomorrow = new Date()
+    tomorrow.setDate(tomorrow.getDate() + 1)
+    return tomorrow.toISOString().split('T')[0]
+  })
+  const [interviewTime, setInterviewTime] = useState('10:00')
+  const [interviewerName, setInterviewerName] = useState('Sarah Jenkins (Engineering Lead)')
+  const [interviewDuration, setInterviewDuration] = useState(60)
+
+  const { data: candidatesData } = useQuery({
+    queryKey: ['candidates', selectedJobId],
+    queryFn: () => candidatesApi.list({ job_id: selectedJobId }),
+    enabled: !!selectedJobId,
+  })
+  const candidates = candidatesData?.items || []
+
+  const scheduleMutation = useMutation({
+    mutationFn: (payload: {
+      candidate_id: string
+      job_id: string
+      scheduled_at: string
+      duration_minutes: number
+      interviewer: string
+      interview_type: string
+    }) => interviewsApi.schedule(payload),
+    onSuccess: () => {
+      toast.success(`✅ Recruiter approved candidate! Google Meet invitation sent to ${scheduleModalCandidate?.email}`)
+      qc.invalidateQueries({ queryKey: ['workflow-status', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-logs', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['candidates', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+      setScheduleModalCandidate(null)
+    },
+    onError: (err: any) => {
+      toast.error(`Failed to schedule interview: ${err.message || err}`)
+    }
+  })
+
+  const handleScheduleSubmit = () => {
+    if (!scheduleModalCandidate || !selectedJobId) return
+    const isoDateTime = `${interviewDate}T${interviewTime}:00`
+    scheduleMutation.mutate({
+      candidate_id: scheduleModalCandidate.id,
+      job_id: selectedJobId,
+      scheduled_at: isoDateTime,
+      duration_minutes: Number(interviewDuration),
+      interviewer: interviewerName,
+      interview_type: 'technical',
+    })
+  }
 
   const retryMutation = useMutation({
     mutationFn: () => workflowApi.retryInterview(selectedJobId),
@@ -1113,6 +1169,76 @@ export default function WorkflowMonitor() {
                     </div>
                   </div>
 
+                  {/* Recruiter Action Section for Node 12 (Shortlist Validation) / Node 13 */}
+                  {(selectedNode.id === 'human_review' || selectedNode.id === 'interviewing') && (
+                    <div style={{ borderTop: '1px solid #35211A', paddingTop: 14, marginTop: 4 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#DC9F85', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <UserCheck size={13} color="#DC9F85" />
+                        <span>Recruiter Candidate Approval</span>
+                      </div>
+
+                      {candidates.length === 0 ? (
+                        <div style={{ fontSize: 11, color: '#7A6A5E', fontStyle: 'italic' }}>
+                          No candidates found for this job yet.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {candidates.map((c: any) => {
+                            const isShortlisted = c.status === 'shortlisted' || c.status === 'applied'
+                            const isScheduled = c.status === 'interview_scheduled' || c.status === 'interviewed'
+                            const isRejected = c.status === 'rejected'
+
+                            return (
+                              <div key={c.id} style={{
+                                padding: '10px 12px', background: '#221D1A',
+                                border: `1px solid ${isScheduled ? 'rgba(74,222,128,0.4)' : isShortlisted ? '#66473B' : '#35211A'}`,
+                                borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 6
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ fontWeight: 600, fontSize: 12, color: '#EBDCC4' }}>{c.name}</div>
+                                  <div style={{
+                                    fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                    background: isScheduled ? 'rgba(74,222,128,0.15)' : isRejected ? 'rgba(239,68,68,0.15)' : 'rgba(220,159,133,0.15)',
+                                    color: isScheduled ? '#4ade80' : isRejected ? '#ef4444' : '#DC9F85',
+                                    textTransform: 'uppercase', letterSpacing: '0.05em'
+                                  }}>
+                                    {c.status.replace('_', ' ')}
+                                  </div>
+                                </div>
+
+                                <div style={{ fontSize: 11, color: '#B6A596' }}>{c.email}</div>
+
+                                {isShortlisted && (
+                                  <button
+                                    onClick={() => setScheduleModalCandidate({ id: c.id, name: c.name, email: c.email })}
+                                    style={{
+                                      marginTop: 4, width: '100%', padding: '7px 12px',
+                                      background: '#DC9F85', color: '#1E1A18', border: 'none',
+                                      borderRadius: 4, fontWeight: 700, fontSize: 11,
+                                      cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                      justifyContent: 'center', gap: 6,
+                                      transition: 'all 0.15s ease'
+                                    }}
+                                  >
+                                    <CheckCircle2 size={13} />
+                                    <span>Approve & Schedule Interview</span>
+                                  </button>
+                                )}
+
+                                {isScheduled && (
+                                  <div style={{ fontSize: 10, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                    <CheckCircle2 size={12} />
+                                    <span>Approved & Google Meet Invitation Sent</span>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* Logs for this node */}
                   <div>
                     <div style={{ fontSize: 10, fontWeight: 700, color: '#7A6A5E', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8 }}>Agent Logs</div>
@@ -1140,6 +1266,125 @@ export default function WorkflowMonitor() {
       </>
     )}
   </div>
+
+      {/* ── Schedule Google Meet Interview Modal ───────────────────────── */}
+      {scheduleModalCandidate && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)',
+          zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20
+        }}>
+          <div style={{
+            background: '#1E1A18', border: '1px solid #66473B', borderRadius: 12,
+            padding: '24px 28px', width: '100%', maxWidth: 440,
+            boxShadow: '0 20px 50px rgba(0,0,0,0.85)', color: '#EBDCC4',
+            fontFamily: "'General Sans','Inter',sans-serif", display: 'flex', flexDirection: 'column', gap: 18
+          }}>
+            {/* Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div style={{ background: 'rgba(220,159,133,0.15)', padding: 8, borderRadius: 8, color: '#DC9F85' }}>
+                  <Video size={20} />
+                </div>
+                <div>
+                  <h3 style={{ fontSize: 16, fontWeight: 700, margin: 0, color: '#EBDCC4' }}>
+                    Approve & Schedule Interview
+                  </h3>
+                  <div style={{ fontSize: 11, color: '#B6A596', marginTop: 2 }}>
+                    Send Google Meet Video Invitation
+                  </div>
+                </div>
+              </div>
+              <button onClick={() => setScheduleModalCandidate(null)} style={{ background: 'none', border: 'none', color: '#7A6A5E', cursor: 'pointer', fontSize: 18 }}>✕</button>
+            </div>
+
+            {/* Candidate Banner */}
+            <div style={{ padding: '10px 14px', background: '#26201D', border: '1px solid #35211A', borderRadius: 8 }}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: '#7A6A5E', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Candidate</div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#EBDCC4', marginTop: 2 }}>{scheduleModalCandidate.name}</div>
+              <div style={{ fontSize: 11, color: '#DC9F85' }}>{scheduleModalCandidate.email}</div>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={(e) => { e.preventDefault(); handleScheduleSubmit(); }} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#B6A596', marginBottom: 6 }}>Interview Date</label>
+                <input
+                  type="date"
+                  required
+                  value={interviewDate}
+                  onChange={e => setInterviewDate(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', background: '#141110', border: '1px solid #35211A', borderRadius: 6, color: '#EBDCC4', fontSize: 13, boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#B6A596', marginBottom: 6 }}>Interview Time</label>
+                <input
+                  type="time"
+                  required
+                  value={interviewTime}
+                  onChange={e => setInterviewTime(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', background: '#141110', border: '1px solid #35211A', borderRadius: 6, color: '#EBDCC4', fontSize: 13, boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#B6A596', marginBottom: 6 }}>Interviewer Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Sarah Jenkins (Engineering Lead)"
+                  value={interviewerName}
+                  onChange={e => setInterviewerName(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', background: '#141110', border: '1px solid #35211A', borderRadius: 6, color: '#EBDCC4', fontSize: 13, boxSizing: 'border-box' }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: 'block', fontSize: 11, fontWeight: 700, color: '#B6A596', marginBottom: 6 }}>Duration</label>
+                <select
+                  value={interviewDuration}
+                  onChange={e => setInterviewDuration(Number(e.target.value))}
+                  style={{ width: '100%', padding: '9px 12px', background: '#141110', border: '1px solid #35211A', borderRadius: 6, color: '#EBDCC4', fontSize: 13, boxSizing: 'border-box' }}
+                >
+                  <option value={30}>30 Minutes</option>
+                  <option value={45}>45 Minutes</option>
+                  <option value={60}>1 Hour (60 Minutes)</option>
+                  <option value={90}>1.5 Hours (90 Minutes)</option>
+                </select>
+              </div>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setScheduleModalCandidate(null)}
+                  style={{ flex: 1, padding: '10px', background: 'transparent', border: '1px solid #35211A', borderRadius: 6, color: '#B6A596', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={scheduleMutation.isPending}
+                  style={{ flex: 2, padding: '10px', background: '#DC9F85', border: 'none', borderRadius: 6, color: '#1E1A18', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+                >
+                  {scheduleMutation.isPending ? (
+                    <>
+                      <Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                      <span>Sending Invite...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={14} />
+                      <span>Approve & Send Google Meet Invite 🚀</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
