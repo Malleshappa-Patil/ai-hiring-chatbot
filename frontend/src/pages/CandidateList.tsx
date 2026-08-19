@@ -525,25 +525,7 @@ export default function CandidateList() {
                             </div>
                           )}
 
-                          {/* Interview invite */}
-                          {isShortlisted && (
-                            <div style={{ flexShrink: 0 }} onClick={e => e.stopPropagation()}>
-                              <button
-                                onClick={() => setInterviewModal({ candidateId: c.id, candidateName: c.name })}
-                                style={{
-                                  padding: '6px 10px',
-                                  background: `rgba(220,159,133,0.1)`,
-                                  border: `1px solid ${C.border}`,
-                                  borderRadius: '4px', color: C.accent, cursor: 'pointer',
-                                  display: 'flex', alignItems: 'center', gap: '5px',
-                                  fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em', textTransform: 'uppercase',
-                                  fontFamily: "'General Sans','Inter',sans-serif",
-                                }}
-                              >
-                                <CalendarPlus size={12} /> Invite
-                              </button>
-                            </div>
-                          )}
+
 
                           {/* Select/Reject for interviewed */}
                           {isInterviewed && (
