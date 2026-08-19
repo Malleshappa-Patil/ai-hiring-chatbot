@@ -66,18 +66,23 @@ def _resolve_main_backend_job_id(hireboard_job_id: str) -> str | None:
     """
     Given a HireBoard job id, return the main backend job UUID.
 
-    Two cases:
-    1. Local chatbot-created job (id like 'job-xxxx') — has main_backend_id stored in jobs.json
+    Three cases:
+    1. Local chatbot-created job — has main_backend_id stored in jobs.json
     2. Live main-backend job (id like 'mb-XXXXXXXX') — UUID prefix embedded in id
-       We fetch the public endpoint to find the full UUID.
+    3. Orphaned local job (no main_backend_id) — title-match against main backend public API
     """
     # Case 1: check local store
     jobs: list = _load_json(JOBS_FILE, [])
     if isinstance(jobs, dict):
         jobs = jobs.get("jobs", [])
+
+    local_job = None
     for j in jobs:
-        if j.get("id") == hireboard_job_id and j.get("main_backend_id"):
-            return j["main_backend_id"]
+        if j.get("id") == hireboard_job_id:
+            local_job = j
+            if j.get("main_backend_id"):
+                return j["main_backend_id"]
+            break  # found the job but no main_backend_id — fall through
 
     # Case 2: live main-backend job — id is 'mb-{first8charsOfUUID}'
     if hireboard_job_id.startswith("mb-"):
@@ -95,6 +100,72 @@ def _resolve_main_backend_job_id(hireboard_job_id: str) -> str | None:
         except Exception as e:
             print(f"[Platform] ⚠️  Could not resolve job UUID: {e}")
 
+    # Case 3: Orphaned local job — try title-match against main backend
+    if local_job:
+        title = local_job.get("title", "").strip().lower()
+        try:
+            req = _urllib_req.Request(
+                "http://localhost:8000/api/v1/jobs/public?page_size=200",
+                headers={"Accept": "application/json"},
+            )
+            with _urllib_req.urlopen(req, timeout=2) as resp:
+                data = json.loads(resp.read().decode())
+                for mj in data.get("items", []):
+                    if mj.get("title", "").strip().lower() == title:
+                        resolved_id = mj["id"]
+                        # Patch jobs.json so we don't need to do this again
+                        all_jobs: list = _load_json(JOBS_FILE, [])
+                        if isinstance(all_jobs, dict):
+                            all_jobs = all_jobs.get("jobs", [])
+                        for lj in all_jobs:
+                            if lj.get("id") == hireboard_job_id:
+                                lj["main_backend_id"] = resolved_id
+                                break
+                        _save_json(JOBS_FILE, all_jobs)
+                        print(f"[Platform] ✅ Patched main_backend_id for '{local_job.get('title')}' -> {resolved_id}")
+                        return resolved_id
+        except Exception as e:
+            print(f"[Platform] ⚠️  Title-match lookup failed: {e}")
+
+    return None
+
+
+async def _register_local_job_to_main_backend(local_job: dict) -> str | None:
+    """
+    Registers an orphaned hireboard job into the main AI Hiring backend DB.
+    Returns the newly created main_backend_id, or None on failure.
+    """
+    import asyncio as _asyncio
+    try:
+        # POST to main backend's internal job-create endpoint (no auth — internal call)
+        payload = {
+            "title":                  local_job.get("title", "Untitled"),
+            "department":             local_job.get("department", "General"),
+            "location":               local_job.get("location", "Remote"),
+            "job_type":               "full_time",
+            "experience_level":       local_job.get("experience", "Not specified"),
+            "hiring_goal":            f"Hire {local_job.get('target_candidate_count',1)} {local_job.get('title','')}",
+            "target_candidate_count": int(local_job.get("target_candidate_count") or 1),
+            "application_open_days":  int(local_job.get("application_open_days") or 7),
+            "company_id":             local_job.get("company_id", "company-001"),
+            "status":                 "approved",
+            "salary":                 local_job.get("salary", "Competitive"),
+        }
+        payload_bytes = json.dumps(payload).encode()
+        req = _urllib_req.Request(
+            "http://localhost:8000/api/v1/jobs/from-hireboard",
+            data=payload_bytes,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with _urllib_req.urlopen(req, timeout=5) as resp:
+            result = json.loads(resp.read().decode())
+            new_id = result.get("id")
+            if new_id:
+                print(f"[Platform] ✅ Auto-registered orphaned job '{local_job.get('title')}' into main DB: {new_id}")
+                return new_id
+    except Exception as e:
+        print(f"[Platform] ⚠️  Could not auto-register job in main backend: {e}")
     return None
 
 # ── Default data ──────────────────────────────────────────────────────────────
@@ -286,6 +357,7 @@ async def create_job(job: dict):
     Called by the AI chatbot workflow when a JD is approved.
     If no company_id is provided, defaults to company-001.
     Auto-creates the company section in companies.json if missing.
+    Auto-registers into main backend DB if main_backend_id is missing.
     """
     jobs = _load_json(JOBS_FILE, [])
     if isinstance(jobs, dict):
@@ -295,6 +367,12 @@ async def create_job(job: dict):
     job.setdefault("status", "open")
     job.setdefault("company_id", "company-001")
     job.setdefault("application_open_days", 7)
+
+    # If main_backend_id is not set, sync to main backend DB now
+    if not job.get("main_backend_id"):
+        mb_id = await _register_local_job_to_main_backend(job)
+        if mb_id:
+            job["main_backend_id"] = mb_id
 
     # Ensure company exists in companies.json so an accordion section renders
     co_id = job["company_id"]
@@ -317,7 +395,7 @@ async def create_job(job: dict):
 
     jobs.append(job)
     _save_json(JOBS_FILE, jobs)
-    print(f"[Platform] ✅ Job created: {job.get('title')} [{job['id']}] → company: {job['company_id']}")
+    print(f"[Platform] ✅ Job created: {job.get('title')} [{job['id']}] → company: {job['company_id']} (main_backend_id={job.get('main_backend_id')})")
     return {"message": "Job created", "job": job}
 
 
@@ -369,6 +447,18 @@ async def apply_for_job(
 
     # -- Check seat limit BEFORE accepting the file upload --
     main_job_id = _resolve_main_backend_job_id(job_id)
+    if not main_job_id:
+        # Local job with no main_backend_id yet — auto-register it now
+        local_jobs: list = _load_json(JOBS_FILE, [])
+        if isinstance(local_jobs, dict):
+            local_jobs = local_jobs.get("jobs", [])
+        target_lj = next((j for j in local_jobs if j.get("id") == job_id), None)
+        if target_lj:
+            main_job_id = await _register_local_job_to_main_backend(target_lj)
+            if main_job_id:
+                target_lj["main_backend_id"] = main_job_id
+                _save_json(JOBS_FILE, local_jobs)
+
     if main_job_id:
         try:
             req = _urllib_req.Request(

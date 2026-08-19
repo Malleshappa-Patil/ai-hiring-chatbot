@@ -198,7 +198,6 @@ function renderJobRow(job, index) {
         <div class="job-chips">
           <span class="chip"><span class="chip-icon">📍</span>${escHtml(job.location || 'Remote')}</span>
           <span class="chip"><span class="chip-icon">⏱</span>${escHtml(job.experience || 'Any')}</span>
-          <span class="chip"><span class="chip-icon">🏢</span>${escHtml(job.department || 'Engineering')}</span>
           <span class="chip chip-openings"><span class="chip-icon">🎯</span>${openingsCount} ${openingsCount === 1 ? 'Opening' : 'Openings'}</span>
         </div>
         ${skillsHtml ? `<div class="skill-tags">${skillsHtml}</div>` : ''}
@@ -217,6 +216,7 @@ function renderJobRow(job, index) {
 }
 
 // ── Default Fallback Data ─────────────────────────────────────────────────────
+
 function getDefaultCompanies() {
   return [{
     id:        'company-001',
