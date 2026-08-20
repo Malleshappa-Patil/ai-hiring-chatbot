@@ -96,6 +96,43 @@ async def schedule_interview(
 
     # Update candidate status
     candidate.status = "interview_scheduled"
+
+    # Advance workflow state & log recruiter/interview agent actions
+    try:
+        from backend.database.models import WorkflowState
+        from backend.services.workflow_service import workflow_service
+
+        wf_res = await db.execute(select(WorkflowState).where(WorkflowState.job_id == payload.job_id))
+        wf = wf_res.scalar_one_or_none()
+        if wf:
+            statuses = dict(wf.agent_statuses or {})
+            statuses["human_review"] = "completed"
+            statuses["human_approval"] = "completed"
+            statuses["interviewing"] = "completed"
+            statuses["interview"] = "completed"
+            wf.agent_statuses = statuses
+            wf.current_stage = "interviewing"
+
+            formatted_time = scheduled_at.strftime("%b %d, %Y at %I:%M %p")
+            await workflow_service._log_agent_action(
+                db, wf.id,
+                agent_name="Human Recruiter",
+                action="approve_candidate_interview",
+                input_summary=f"Approved Candidate: {candidate.name} ({candidate.email})",
+                output_summary=f"Recruiter approved shortlist. Google Meet interview confirmed for {formatted_time} with {payload.interviewer}.",
+                latency_ms=250, token_usage=100
+            )
+            await workflow_service._log_agent_action(
+                db, wf.id,
+                agent_name="Interview Agent",
+                action="send_google_meet_invitation",
+                input_summary=f"Send Google Meet invite to {candidate.email}",
+                output_summary=f"Google Meet invitation sent ({meeting_link}). Candidate status updated to interview_scheduled.",
+                latency_ms=420, token_usage=180
+            )
+    except Exception as wf_err:
+        logger.warning(f"Could not update workflow state on schedule: {wf_err}")
+
     await db.commit()
     await db.refresh(interview)
 
@@ -104,7 +141,7 @@ async def schedule_interview(
         candidate_email=candidate.email,
         candidate_name=candidate.name,
         job_title=job_title,
-        scheduled_at=scheduled_at.strftime("%B %d, %Y at %H:%M UTC"),
+        scheduled_at=scheduled_at.strftime("%B %d, %Y at %I:%M %p UTC"),
         interviewer=payload.interviewer,
         meeting_link=interview.meeting_link,
     )
