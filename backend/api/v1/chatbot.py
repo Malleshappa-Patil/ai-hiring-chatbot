@@ -166,21 +166,27 @@ def _regex_extract(message: str) -> dict:
             break
 
     # ── Location ──────────────────────────────────────────────────────────
+    # Stop at: salary, budget, application, open, additional, skills, experience, number
+    _STOP = r'(?:\n|,?\s*(?:salary|budget|application|open\s*days?|additional|skills?|experience|number|openings?|key\s*skills?))'
     loc_patterns = [
-        r'(?:location|city|place|work\s*(?:location|from)|based\s*(?:in|at))\s*[:\-–—]\s*(.+?)(?:\n|,\s*(?:salary|budget|additional)|\.?\s*$)',
+        r'(?:location|city|place|work\s*(?:location|from)|based\s*(?:in|at))\s*[:\-–—]\s*(.+?)' + _STOP,
         r'(?:location|city)\s*[:\-–—]\s*(.+?)(?:\.|,|$)',
     ]
     for pat in loc_patterns:
         m = re.search(pat, msg, re.IGNORECASE)
         if m:
             loc = m.group(1).strip().rstrip('.,;')
+            # Hard-truncate at any of the stop keywords that slipped through
+            loc = re.split(r'\s*(?:salary|budget|application|open days?|additional)', loc, flags=re.IGNORECASE)[0].strip().rstrip('.,;')
             if len(loc) > 1:
                 result["location"] = loc.title()
             break
 
     # ── Budget / Salary ───────────────────────────────────────────────────
+    # Pattern 1: explicit label → capture until a clean stop
+    _SALARY_STOP = r'(?:\n|,?\s*(?:application|open\s*days?|additional|location|experience)|\.?\s*$)'
     budget_patterns = [
-        r'(?:salary|budget|compensation|pay|ctc|package|sal)\s*(?:range|budget)?\s*[:\-–—]\s*(.+?)(?:\n|,\s*(?:additional|location)|\.?\s*(?:go\s|start\s|$))',
+        r'(?:salary|budget|compensation|pay|ctc|package|sal)\s*(?:range|budget)?\s*[:\-–—]\s*(.+?)' + _SALARY_STOP,
         r'((?:₹|rs\.?|inr|usd|\$)\s*[\d]+[\s\-–—to]+[\d]+\s*(?:lpa|lakhs?|lacs?|k|cr|crore)?)',
         r'([\d]+\s*(?:to|-)\s*[\d]+\s*(?:lpa|lakhs?|lacs?|ctc|k))',
     ]
@@ -188,6 +194,8 @@ def _regex_extract(message: str) -> dict:
         m = re.search(pat, msg, re.IGNORECASE)
         if m:
             budget = m.group(1).strip().rstrip('.,;')
+            # Hard-truncate at application/open/additional keywords
+            budget = re.split(r'\s*(?:application|open\s*days?|additional)', budget, flags=re.IGNORECASE)[0].strip().rstrip('.,;')
             if len(budget) > 1:
                 result["budget"] = budget
             break
@@ -515,12 +523,12 @@ async def _trigger_hiring_workflow(session: dict) -> str:
             company_id_val = session.get("company_id") or "company-001"
 
             job = Job(
-                title=job_title,
+                title=job_title[:250],
                 company_id=company_id_val,
-                department=str(hr.get("department", "General")),
-                location=str(hr.get("location", "Not specified")),
+                department=str(hr.get("department", "General"))[:95],
+                location=str(hr.get("location", "Not specified"))[:95],
                 job_type=job_type_val,
-                experience_level=str(hr.get("experience_years", "Not specified")),
+                experience_level=str(hr.get("experience_years", "Not specified"))[:95],
                 hiring_goal=f"Hire {hr.get('candidates_needed', 1)} {job_title}(s)",
                 target_candidate_count=int(hr.get("candidates_needed", 1)),
                 application_open_days=int(hr.get("application_open_days", 7)),
@@ -655,6 +663,7 @@ async def start_chatbot_session(current_user: Optional[User] = Depends(get_optio
         "- **Key Skills & Technologies** (e.g. Python, FastAPI, AWS)\n"
         "- **Location** (e.g. Remote, Bangalore)\n"
         "- **Salary Budget** (e.g. ₹15-25 LPA)\n"
+        "- **Application Open Days** (e.g. 7, 14 or 30 days — how long to accept resumes)\n"
         "- **Additional Requirements** (optional)\n\n"
         "You can provide everything in one message or we can go step by step — your choice! 🚀"
     )
@@ -716,6 +725,7 @@ async def send_message(request: ChatMessageRequest):
             "- **Key Skills & Technologies**\n"
             "- **Location**\n"
             "- **Salary Budget**\n"
+            "- **Application Open Days** (e.g. 7, 14 or 30 — how long to accept resumes before screening begins)\n"
             "- **Additional Requirements** (optional)\n\n"
             "You can share everything in one message!"
         )
