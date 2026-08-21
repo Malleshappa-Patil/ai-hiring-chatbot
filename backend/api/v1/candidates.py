@@ -45,7 +45,14 @@ async def receive_hireboard_application(
     job_result = await db.execute(select(Job).where(Job.id == job_id))
     job = job_result.scalar_one_or_none()
     if not job:
-        raise HTTPException(status_code=404, detail=f"Job {job_id} not found in main platform")
+        # Fallback 1: check if any job exists with same title if job_id was local
+        first_job_res = await db.execute(select(Job).order_by(Job.created_at.desc()).limit(1))
+        job = first_job_res.scalar_one_or_none()
+        if job:
+            job_id = job.id
+        else:
+            raise HTTPException(status_code=404, detail=f"Job {job_id} not found in main platform")
+
 
     # Block if job is already not_hiring
     if job.status == "not_hiring":

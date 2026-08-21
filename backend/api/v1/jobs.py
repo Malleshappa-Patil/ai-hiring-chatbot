@@ -75,6 +75,90 @@ async def list_jobs_public(
     }
 
 
+# ── Public: Sync Job from HireBoard / Chatbot ──────────────────────
+@router.post("/from-hireboard", status_code=201)
+async def create_job_from_hireboard(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Creates a Job record in the main platform DB from HireBoard/Chatbot requests.
+    No authentication required - called server-to-server.
+    """
+    title = payload.get("title") or "Untitled Position"
+
+    # Check if job with exact same title already exists
+    existing = await db.execute(
+        select(Job).where(func.lower(Job.title) == func.lower(title))
+    )
+    job = existing.scalars().first()
+
+    if not job:
+        # Find default creator user
+        user_res = await db.execute(select(User).where(User.is_active == True).limit(1))
+        default_user = user_res.scalar_one_or_none()
+        creator_id = default_user.id if default_user else "hireboard"
+
+        job = Job(
+            title=str(title)[:250],
+            company_id=str(payload.get("company_id") or "company-001")[:50],
+            department=str(payload.get("department") or "General")[:95],
+            location=str(payload.get("location") or "Not specified")[:95],
+            job_type=payload.get("job_type") or "full_time",
+            experience_level=str(payload.get("experience_level") or payload.get("experience") or "Not specified")[:95],
+            hiring_goal=payload.get("hiring_goal") or f"Hire {payload.get('target_candidate_count', 1)} {title}",
+            target_candidate_count=int(payload.get("target_candidate_count") or payload.get("openings") or 1),
+            application_open_days=int(payload.get("application_open_days") or 7),
+            status="approved",
+            created_by=creator_id,
+        )
+        db.add(job)
+        await db.flush()
+
+        desc_text = payload.get("description") or payload.get("jd_content")
+        if desc_text:
+            jd = JobDescription(
+                job_id=job.id,
+                content=desc_text,
+                version=1,
+                status="approved",
+            )
+            db.add(jd)
+
+        await db.commit()
+        await db.refresh(job)
+
+        try:
+            from backend.services.workflow_service import workflow_service
+            wf = await workflow_service.start_workflow(
+                db=db,
+                job_id=job.id,
+                goal=job.hiring_goal,
+                user_id=creator_id,
+                skip_jd_generation=True,
+            )
+            if wf:
+                await workflow_service.advance_stage(
+                    db, wf.id, "sourcing",
+                    {
+                        "supervisor": "completed",
+                        "planning": "completed",
+                        "jd_generation": "completed",
+                        "human_approval": "completed",
+                        "sourcing": "running",
+                    }
+                )
+        except Exception as e:
+            logger.warning(f"[Jobs/from-hireboard] Could not auto-start workflow: {e}")
+
+    return {
+        "id": job.id,
+        "title": job.title,
+        "status": job.status,
+        "message": "Job synced to main platform",
+    }
+
+
 # ── List Jobs ─────────────────────────────────────────────────────
 @router.get("/", response_model=PaginatedResponse)
 async def list_jobs(
