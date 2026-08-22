@@ -45,6 +45,7 @@
 - Python 3.11+
 - Node.js 22+
 - Docker + Docker Compose
+- 
 
 ### 1. Clone & Configure
 
