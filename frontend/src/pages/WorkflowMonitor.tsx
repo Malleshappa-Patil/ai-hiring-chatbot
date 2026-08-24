@@ -462,6 +462,42 @@ export default function WorkflowMonitor() {
     })
   }
 
+  const selectMutation = useMutation({
+    mutationFn: ({ id, selection_note }: { id: string; selection_note?: string }) => candidatesApi.select(id, { selection_note }),
+    onSuccess: (data: any) => {
+      if (data?.email_sent === false) {
+        toast.error('⚠️ Candidate SELECTED, BUT email delivery failed: Gmail SMTP Bad Credentials (Check MAIL_PASSWORD in config).', { duration: 7000 })
+      } else {
+        toast.success(data?.message || '🎉 Candidate SELECTED! Selection email with Google Meet link sent.')
+      }
+      qc.invalidateQueries({ queryKey: ['workflow-status', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-logs', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['candidates', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+    },
+    onError: (err: any) => {
+      toast.error(`Failed to select candidate: ${err?.response?.data?.detail || err.message}`)
+    }
+  })
+
+  const rejectFinalMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason?: string }) => candidatesApi.rejectFinal(id, { reason }),
+    onSuccess: (data: any) => {
+      if (data?.email_sent === false) {
+        toast.error('⚠️ Candidate REJECTED, BUT email delivery failed: Gmail SMTP Bad Credentials (Check MAIL_PASSWORD in config).', { duration: 7000 })
+      } else {
+        toast.success('Candidate REJECTED. Rejection email sent with recruiter notes.')
+      }
+      qc.invalidateQueries({ queryKey: ['workflow-status', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-logs', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['candidates', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['jobs'] })
+    },
+    onError: (err: any) => {
+      toast.error(`Failed to reject candidate: ${err?.response?.data?.detail || err.message}`)
+    }
+  })
+
   const retryMutation = useMutation({
     mutationFn: () => workflowApi.retryInterview(selectedJobId),
     onSuccess: () => {
@@ -1186,20 +1222,21 @@ export default function WorkflowMonitor() {
                           {candidates.map((c: any) => {
                             const isShortlisted = c.status === 'shortlisted' || c.status === 'applied'
                             const isScheduled = c.status === 'interview_scheduled' || c.status === 'interviewed'
+                            const isSelected = c.status === 'selected' || c.status === 'onboarding'
                             const isRejected = c.status === 'rejected'
 
                             return (
                               <div key={c.id} style={{
                                 padding: '10px 12px', background: '#221D1A',
-                                border: `1px solid ${isScheduled ? 'rgba(74,222,128,0.4)' : isShortlisted ? '#66473B' : '#35211A'}`,
+                                border: `1px solid ${isSelected ? 'rgba(74,222,128,0.6)' : isScheduled ? 'rgba(74,222,128,0.4)' : isRejected ? 'rgba(239,68,68,0.3)' : isShortlisted ? '#66473B' : '#35211A'}`,
                                 borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 6
                               }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <div style={{ fontWeight: 600, fontSize: 12, color: '#EBDCC4' }}>{c.name}</div>
                                   <div style={{
                                     fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                                    background: isScheduled ? 'rgba(74,222,128,0.15)' : isRejected ? 'rgba(239,68,68,0.15)' : 'rgba(220,159,133,0.15)',
-                                    color: isScheduled ? '#4ade80' : isRejected ? '#ef4444' : '#DC9F85',
+                                    background: isSelected ? 'rgba(74,222,128,0.2)' : isScheduled ? 'rgba(74,222,128,0.15)' : isRejected ? 'rgba(239,68,68,0.15)' : 'rgba(220,159,133,0.15)',
+                                    color: isSelected || isScheduled ? '#4ade80' : isRejected ? '#ef4444' : '#DC9F85',
                                     textTransform: 'uppercase', letterSpacing: '0.05em'
                                   }}>
                                     {c.status.replace('_', ' ')}
@@ -1208,27 +1245,84 @@ export default function WorkflowMonitor() {
 
                                 <div style={{ fontSize: 11, color: '#B6A596' }}>{c.email}</div>
 
-                                {isShortlisted && (
-                                  <button
-                                    onClick={() => setScheduleModalCandidate({ id: c.id, name: c.name, email: c.email })}
-                                    style={{
-                                      marginTop: 4, width: '100%', padding: '7px 12px',
-                                      background: '#DC9F85', color: '#1E1A18', border: 'none',
-                                      borderRadius: 4, fontWeight: 700, fontSize: 11,
-                                      cursor: 'pointer', display: 'flex', alignItems: 'center',
-                                      justifyContent: 'center', gap: 6,
-                                      transition: 'all 0.15s ease'
-                                    }}
-                                  >
-                                    <CheckCircle2 size={13} />
-                                    <span>Approve & Schedule Interview</span>
-                                  </button>
+                                {/* Action Buttons */}
+                                {!isSelected && !isRejected && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                                    {isShortlisted && (
+                                      <button
+                                        onClick={() => setScheduleModalCandidate({ id: c.id, name: c.name, email: c.email })}
+                                        style={{
+                                          width: '100%', padding: '6px 10px',
+                                          background: '#DC9F85', color: '#1E1A18', border: 'none',
+                                          borderRadius: 4, fontWeight: 700, fontSize: 11,
+                                          cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                          justifyContent: 'center', gap: 6
+                                        }}
+                                      >
+                                        <CheckCircle2 size={13} />
+                                        <span>Schedule Interview Call</span>
+                                      </button>
+                                    )}
+
+                                    <div style={{ display: 'flex', gap: 6 }}>
+                                      <button
+                                        disabled={selectMutation.isPending || rejectFinalMutation.isPending}
+                                        onClick={() => {
+                                          const note = window.prompt(`Select ${c.name}? Add optional selection note for email:`, 'We are excited to invite you to join our team!')
+                                          if (note !== null) {
+                                            selectMutation.mutate({ id: c.id, selection_note: note })
+                                          }
+                                        }}
+                                        style={{
+                                          flex: 1, padding: '6px 8px',
+                                          background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)',
+                                          borderRadius: 4, color: '#4ade80', fontWeight: 700, fontSize: 10.5,
+                                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+                                        }}
+                                      >
+                                        {selectMutation.isPending && selectMutation.variables?.id === c.id ? (
+                                          <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                        ) : (
+                                          <span>🎉 Select & Send Link</span>
+                                        )}
+                                      </button>
+
+                                      <button
+                                        disabled={selectMutation.isPending || rejectFinalMutation.isPending}
+                                        onClick={() => {
+                                          const reason = window.prompt(`Reject ${c.name}? Add optional rejection note for email:`, 'Qualifications did not closely match current requirement.')
+                                          if (reason !== null) {
+                                            rejectFinalMutation.mutate({ id: c.id, reason })
+                                          }
+                                        }}
+                                        style={{
+                                          flex: 1, padding: '6px 8px',
+                                          background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
+                                          borderRadius: 4, color: '#ef4444', fontWeight: 700, fontSize: 10.5,
+                                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+                                        }}
+                                      >
+                                        {rejectFinalMutation.isPending && rejectFinalMutation.variables?.id === c.id ? (
+                                          <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                        ) : (
+                                          <span>❌ Reject Candidate</span>
+                                        )}
+                                      </button>
+                                    </div>
+                                  </div>
                                 )}
 
-                                {isScheduled && (
+                                {isSelected && (
                                   <div style={{ fontSize: 10, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
                                     <CheckCircle2 size={12} />
-                                    <span>Approved & Google Meet Invitation Sent</span>
+                                    <span>SELECTED — Google Meet & Offer Email Dispatched</span>
+                                  </div>
+                                )}
+
+                                {isRejected && (
+                                  <div style={{ fontSize: 10, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                    <XCircle size={12} />
+                                    <span>REJECTED — Rejection Notice Sent</span>
                                   </div>
                                 )}
                               </div>

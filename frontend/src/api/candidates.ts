@@ -17,12 +17,12 @@ export const candidatesApi = {
     const res = await apiClient.post(`/candidates/${id}/reject`, { reason });
     return res.data;
   },
-  select: async (id: string) => {
-    const res = await apiClient.post(`/candidates/${id}/select`);
+  select: async (id: string, payload?: { selection_note?: string; meeting_link?: string }) => {
+    const res = await apiClient.post(`/candidates/${id}/select`, payload || {});
     return res.data;
   },
-  rejectFinal: async (id: string) => {
-    const res = await apiClient.post(`/candidates/${id}/reject-final`);
+  rejectFinal: async (id: string, payload?: { reason?: string }) => {
+    const res = await apiClient.post(`/candidates/${id}/reject-final`, payload || {});
     return res.data;
   },
 };
