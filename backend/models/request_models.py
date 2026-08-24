@@ -53,6 +53,16 @@ class RejectCandidateRequest(BaseModel):
     reason: str
 
 
+class SelectCandidateRequest(BaseModel):
+    selection_note: Optional[str] = None
+    meeting_link: Optional[str] = None
+
+
+class FinalRejectCandidateRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+
 # ── Interviews ───────────────────────────────────────────────────
 class ScheduleInterviewRequest(BaseModel):
     candidate_id: str

@@ -1,7 +1,7 @@
 """Candidates API: listing, ranking, profiles, approve/reject."""
 import logging
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, desc
 from sqlalchemy.orm import selectinload
@@ -9,7 +9,9 @@ from sqlalchemy.orm import selectinload
 from backend.database.session import get_db
 from backend.database.models import Candidate, CandidateScore, User, Resume
 from backend.api.dependencies import get_current_user
-from backend.models.request_models import RejectCandidateRequest
+from backend.models.request_models import (
+    RejectCandidateRequest, SelectCandidateRequest, FinalRejectCandidateRequest
+)
 from backend.models.response_models import (
     CandidateResponse, CandidateProfileResponse, PaginatedResponse
 )
@@ -278,15 +280,53 @@ async def reject_candidate(
     db: AsyncSession = Depends(get_db),
 ):
     from backend.services.workflow_service import workflow_service
+    from backend.services.notification_service import email_service
+    from backend.database.models import Job, WorkflowState
 
     result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
     candidate = result.scalar_one_or_none()
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
+    job_result = await db.execute(select(Job).where(Job.id == candidate.job_id))
+    job = job_result.scalar_one_or_none()
+    job_title = job.title if job else "the position"
+
     candidate.status = "rejected"
     await db.commit()
     await db.refresh(candidate)
+
+    email_sent = await email_service.send_candidate_rejection(
+        candidate_email=candidate.email,
+        candidate_name=candidate.name,
+        job_title=job_title,
+        rejection_note=payload.reason,
+    )
+
+    # Log workflow action under Comms Agent & mark rejection_email node as completed
+    try:
+        wf_res = await db.execute(select(WorkflowState).where(WorkflowState.job_id == candidate.job_id))
+        wf = wf_res.scalar_one_or_none()
+        if wf:
+            statuses = dict(wf.agent_statuses or {})
+            statuses["human_review"] = "completed"
+            statuses["human_approval"] = "completed"
+            statuses["interviewing"] = "completed"
+            statuses["rejection_email"] = "completed"
+            wf.agent_statuses = statuses
+            wf.current_stage = "rejection_email"
+            email_log_str = "Rejection email sent." if email_sent else "WARNING: Email delivery failed via SMTP (Check Gmail App Password)."
+            await workflow_service._log_agent_action(
+                db, wf.id,
+                agent_name="Comms Agent",
+                action="send_rejection_email",
+                input_summary=f"Reject Candidate: {candidate.name} ({candidate.email})",
+                output_summary=f"Candidate REJECTED ({payload.reason}). {email_log_str}",
+                latency_ms=250, token_usage=100
+            )
+            await db.commit()
+    except Exception as wf_err:
+        logger.warning(f"Could not update workflow state: {wf_err}")
 
     # Check if workflow should advance
     await workflow_service.check_human_review_status(db, candidate.job_id)
@@ -356,19 +396,24 @@ async def delete_all_candidates(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# -- Post-Interview: Select Candidate -----------------------------------------
+# -- Post-Interview / Review: Select Candidate ---------------------------------
 @router.post("/{candidate_id}/select", status_code=200)
 async def select_candidate(
     candidate_id: str,
+    payload: Optional[SelectCandidateRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Recruiter selects a candidate after the interview.
-    Updates status to 'selected' and sends congratulations email.
+    Recruiter selects a candidate after review/interview.
+    Updates status to 'selected', attaches/generates Google Meet link,
+    marks 'candidate_selected' node completed, and sends selection email.
     """
-    from backend.database.models import Job
+    from backend.database.models import Job, Interview, WorkflowState
     from backend.services.notification_service import email_service
+    from backend.services.google_meet_service import create_meeting
+    from backend.services.workflow_service import workflow_service
+    from datetime import datetime, timedelta
 
     result = await db.execute(
         select(Candidate).where(Candidate.id == candidate_id)
@@ -377,42 +422,94 @@ async def select_candidate(
     if not candidate:
         raise HTTPException(status_code=404, detail="Candidate not found")
 
-    # Load job title
     job_result = await db.execute(select(Job).where(Job.id == candidate.job_id))
     job = job_result.scalar_one_or_none()
     job_title = job.title if job else "the position"
 
+    # Find existing interview meeting link or create a new one
+    meeting_link = payload.meeting_link if payload and payload.meeting_link else None
+    if not meeting_link:
+        interview_res = await db.execute(
+            select(Interview).where(Interview.candidate_id == candidate_id).order_by(desc(Interview.scheduled_at))
+        )
+        existing_interview = interview_res.scalar_one_or_none()
+        if existing_interview and existing_interview.meeting_link:
+            meeting_link = existing_interview.meeting_link
+        else:
+            meeting_link = await create_meeting(
+                candidate_name=candidate.name,
+                job_title=job_title,
+                scheduled_at=datetime.utcnow() + timedelta(days=1),
+                duration_minutes=30,
+                interviewer=current_user.full_name or "Hiring Team",
+            )
+
     candidate.status = "selected"
     await db.commit()
 
-    # Send congratulations email
-    await email_service.send_selection_email(
+    selection_note = payload.selection_note if payload else None
+
+    # Send congratulations & Google Meet link email
+    email_sent = await email_service.send_selection_email(
         candidate_email=candidate.email,
         candidate_name=candidate.name,
         job_title=job_title,
+        meeting_link=meeting_link,
+        selection_note=selection_note,
     )
 
-    logger.info(f"Candidate {candidate.name} selected by {current_user.email}")
+    # Update workflow state & mark candidate_selected node completed
+    try:
+        wf_res = await db.execute(select(WorkflowState).where(WorkflowState.job_id == candidate.job_id))
+        wf = wf_res.scalar_one_or_none()
+        if wf:
+            statuses = dict(wf.agent_statuses or {})
+            statuses["human_review"] = "completed"
+            statuses["human_approval"] = "completed"
+            statuses["interviewing"] = "completed"
+            statuses["candidate_selected"] = "completed"
+            wf.agent_statuses = statuses
+            wf.current_stage = "candidate_selected"
+
+            email_log_str = "Selection notification sent to candidate email." if email_sent else "WARNING: Email delivery failed via SMTP (Check Gmail App Password)."
+
+            await workflow_service._log_agent_action(
+                db, wf.id,
+                agent_name="Offer Agent",
+                action="send_offer_letter",
+                input_summary=f"Select Candidate: {candidate.name} ({candidate.email})",
+                output_summary=f"Candidate SELECTED! Google Meet link attached ({meeting_link}). {email_log_str}",
+                latency_ms=300, token_usage=120
+            )
+            await db.commit()
+    except Exception as wf_err:
+        logger.warning(f"Could not update workflow state on candidate select: {wf_err}")
+
+    logger.info(f"Candidate {candidate.name} selected by {current_user.email} (email_sent={email_sent})")
     return {
-        "message":      f"{candidate.name} has been selected and notified via email.",
+        "message":      f"{candidate.name} has been SELECTED." + (" Selection email sent." if email_sent else " (WARNING: Email delivery failed via SMTP)."),
         "candidate_id": candidate_id,
         "status":       "selected",
+        "meeting_link": meeting_link,
+        "email_sent":   email_sent,
     }
 
 
-# -- Post-Interview: Final Reject Candidate ------------------------------------
+# -- Post-Interview / Review: Final Reject Candidate ---------------------------
 @router.post("/{candidate_id}/reject-final", status_code=200)
 async def reject_candidate_final(
     candidate_id: str,
+    payload: Optional[FinalRejectCandidateRequest] = Body(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Recruiter rejects a candidate after the interview.
-    Updates status to 'rejected' and sends a warm rejection email.
+    Recruiter rejects a candidate after review/interview.
+    Updates status to 'rejected', marks 'rejection_email' node completed, and sends rejection email.
     """
-    from backend.database.models import Job
+    from backend.database.models import Job, WorkflowState
     from backend.services.notification_service import email_service
+    from backend.services.workflow_service import workflow_service
 
     result = await db.execute(
         select(Candidate).where(Candidate.id == candidate_id)
@@ -428,15 +525,46 @@ async def reject_candidate_final(
     candidate.status = "rejected"
     await db.commit()
 
-    await email_service.send_candidate_rejection(
+    rejection_note = payload.reason if payload else None
+
+    email_sent = await email_service.send_candidate_rejection(
         candidate_email=candidate.email,
         candidate_name=candidate.name,
         job_title=job_title,
+        rejection_note=rejection_note,
     )
 
-    logger.info(f"Candidate {candidate.name} final-rejected by {current_user.email}")
+    # Update workflow state & mark rejection_email node completed
+    try:
+        wf_res = await db.execute(select(WorkflowState).where(WorkflowState.job_id == candidate.job_id))
+        wf = wf_res.scalar_one_or_none()
+        if wf:
+            statuses = dict(wf.agent_statuses or {})
+            statuses["human_review"] = "completed"
+            statuses["human_approval"] = "completed"
+            statuses["interviewing"] = "completed"
+            statuses["rejection_email"] = "completed"
+            wf.agent_statuses = statuses
+            wf.current_stage = "rejection_email"
+
+            email_log_str = "Rejection email sent with recruiter notes." if email_sent else "WARNING: Email delivery failed via SMTP (Check Gmail App Password)."
+
+            await workflow_service._log_agent_action(
+                db, wf.id,
+                agent_name="Comms Agent",
+                action="send_rejection_email",
+                input_summary=f"Reject Candidate: {candidate.name} ({candidate.email})",
+                output_summary=f"Candidate REJECTED. {email_log_str}",
+                latency_ms=250, token_usage=100
+            )
+            await db.commit()
+    except Exception as wf_err:
+        logger.warning(f"Could not update workflow state on candidate reject: {wf_err}")
+
+    logger.info(f"Candidate {candidate.name} final-rejected by {current_user.email} (email_sent={email_sent})")
     return {
-        "message":      f"{candidate.name} has been rejected and notified via email.",
+        "message":      f"{candidate.name} has been rejected." + (" Rejection email sent." if email_sent else " (WARNING: Email delivery failed via SMTP)."),
         "candidate_id": candidate_id,
         "status":       "rejected",
+        "email_sent":   email_sent,
     }

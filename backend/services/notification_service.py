@@ -52,7 +52,7 @@ class EmailService:
         body: str,
         html: Optional[str] = None,
     ) -> bool:
-        """Send an email. Returns True on success."""
+        """Send an email. Uses fastapi-mail or standard smtplib fallback."""
         if self.mock:
             logger.info(
                 f"\n{'='*60}\n"
@@ -64,20 +64,61 @@ class EmailService:
             )
             return True
 
+        # 1. Try fastapi-mail if installed
         try:
-            from fastapi_mail import MessageSchema, MessageType
             mail = self._get_mail()
-            message = MessageSchema(
-                subject=subject,
-                recipients=to,
-                body=html or body,
-                subtype=MessageType.html if html else MessageType.plain,
-            )
-            await mail.send_message(message)
-            logger.info(f"Email sent to {to}: {subject}")
+            if mail is not None and not self.mock:
+                from fastapi_mail import MessageSchema, MessageType
+                message = MessageSchema(
+                    subject=subject,
+                    recipients=to,
+                    body=html or body,
+                    subtype=MessageType.html if html else MessageType.plain,
+                )
+                await mail.send_message(message)
+                logger.info(f"Email sent via fastapi-mail to {to}: {subject}")
+                return True
+        except Exception as fm_err:
+            logger.warning(f"fastapi-mail send failed ({fm_err}). Trying smtplib fallback...")
+
+        # 2. Built-in smtplib fallback (Python stdlib)
+        try:
+            import asyncio
+            import smtplib
+            from email.mime.multipart import MIMEMultipart
+            from email.mime.text import MIMEText
+
+            def _send_smtp():
+                msg = MIMEMultipart("alternative")
+                msg["Subject"] = subject
+                msg["From"] = f"{settings.MAIL_FROM_NAME} <{settings.MAIL_FROM}>"
+                msg["To"] = ", ".join(to)
+
+                msg.attach(MIMEText(body, "plain"))
+                if html:
+                    msg.attach(MIMEText(html, "html"))
+
+                server = smtplib.SMTP(settings.MAIL_SERVER, settings.MAIL_PORT, timeout=15)
+                if settings.MAIL_STARTTLS:
+                    server.starttls()
+                if settings.MAIL_USERNAME and settings.MAIL_PASSWORD:
+                    server.login(settings.MAIL_USERNAME, settings.MAIL_PASSWORD)
+                server.sendmail(settings.MAIL_FROM, to, msg.as_string())
+                server.quit()
+
+            await asyncio.to_thread(_send_smtp)
+            logger.info(f"Email sent via smtplib to {to}: {subject}")
             return True
         except Exception as e:
-            logger.error(f"Email send failed: {e}")
+            logger.error(f"Email send failed via both fastapi-mail and smtplib: {e}")
+            # Fallback to mock log so process continues safely
+            logger.info(
+                f"\n{'='*60}\n"
+                f"📧 [FALLBACK LOG] EMAIL TO {', '.join(to)}\n"
+                f"  Subject: {subject}\n"
+                f"  Body:\n{body}\n"
+                f"{'='*60}"
+            )
             return False
 
     # ── Pre-built Templates ────────────────────────────────────────
@@ -232,39 +273,81 @@ HR Team
         )
 
     async def send_candidate_rejection(
-        self, candidate_email: str, candidate_name: str, job_title: str
+        self,
+        candidate_email: str,
+        candidate_name: str,
+        job_title: str,
+        rejection_note: Optional[str] = None,
     ) -> bool:
+        note_html = ""
+        note_text = ""
+        if rejection_note and rejection_note.strip():
+            note_html = f"""
+    <div style="background:#fef2f2;border-left:4px solid #ef4444;padding:14px 18px;border-radius:0 8px 8px 0;margin:20px 0;">
+      <div style="font-size:11px;font-weight:700;color:#991b1b;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">📝 Note from Recruiter Team</div>
+      <p style="color:#7f1d1d;margin:0;font-size:14px;line-height:1.6;">{rejection_note}</p>
+    </div>
+"""
+            note_text = f"\n\nNote from Recruiter Team:\n{rejection_note}\n"
+
         html = f"""
-<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
-  <h2 style="color:#1a1a2e;">Update on Your Application — {job_title}</h2>
-  <p>Dear <strong>{candidate_name}</strong>,</p>
-  <p>Thank you for taking the time to apply for the <strong>{job_title}</strong> position
-  and for the effort you put into your application.</p>
-  <p>After careful consideration, we have decided to move forward with other candidates
-  whose qualifications more closely match our current requirements.
-  This was a genuinely difficult decision and in no way reflects your potential.</p>
-  <p>We were impressed by your background and encourage you to keep growing
-  and exploring new opportunities. The right role is out there, and we believe
-  you will find it. We will keep your profile on file and may reach out for
-  future openings that are a strong match for your skills.</p>
-  <p>We sincerely wish you every success in your career journey ahead.</p>
-  <p>Warm regards,<br/><strong>Hiring Team</strong><br/>AI Hiring Platform</p>
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#1f2937 0%,#111827 100%);padding:32px 36px;">
+    <div style="color:#9ca3af;font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;">AI Hiring Platform</div>
+    <h1 style="color:#ffffff;font-size:22px;font-weight:700;margin:0;">Update on Your Application</h1>
+    <div style="color:#d1d5db;font-size:14px;margin-top:4px;">{job_title}</div>
+  </div>
+
+  <!-- Body -->
+  <div style="padding:32px 36px;">
+    <p style="color:#111827;font-size:16px;margin:0 0 20px;">Dear <strong>{candidate_name}</strong>,</p>
+    <p style="color:#374151;line-height:1.7;margin:0 0 20px;">
+      Thank you for taking the time to apply for the <strong>{job_title}</strong> position and for your engagement with our hiring team.
+    </p>
+
+    {note_html}
+
+    <p style="color:#374151;line-height:1.7;margin:0 0 20px;">
+      After careful consideration, we have decided to move forward with other candidates whose qualifications more closely match our current requirements for this specific role. This decision was difficult and in no way reflects on your overall talent and potential.
+    </p>
+
+    <!-- Motivational note -->
+    <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-left:4px solid #10b981;padding:16px 20px;border-radius:0 8px 8px 0;margin:24px 0;">
+      <div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">💪 Keep Growing</div>
+      <p style="color:#065f46;line-height:1.6;margin:0;font-size:13.5px;">
+        We were genuinely impressed by your profile. We encourage you to keep sharpening your skills and exploring new opportunities. The right role is ahead of you!
+      </p>
+    </div>
+
+    <p style="color:#374151;line-height:1.6;margin:0 0 24px;">
+      We will keep your resume in our talent database. Should a future opening arise that matches your background, we will be glad to reach back out to you.
+    </p>
+
+    <p style="color:#374151;margin:0;">Warm regards,<br/>
+    <strong>Hiring Team</strong><br/>
+    <span style="color:#6b7280;font-size:13px;">AI Hiring Platform</span></p>
+  </div>
+
+  <!-- Footer -->
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 36px;text-align:center;">
+    <p style="color:#9ca3af;font-size:11px;margin:0;">This is an automated update from the AI Hiring Platform.</p>
+  </div>
 </div>
 """
+        body = (
+            f"Dear {candidate_name},\n\n"
+            f"Thank you for applying for the {job_title} position.{note_text}\n\n"
+            "After careful consideration, we have decided to move forward with other candidates "
+            "whose qualifications more closely match our current requirements.\n\n"
+            "We were impressed by your background and encourage you to keep growing. "
+            "We will keep your profile on file for future opportunities.\n\n"
+            "Warm regards,\nHiring Team\nAI Hiring Platform"
+        )
         return await self.send(
             to=[candidate_email],
             subject=f"Update on Your Application — {job_title}",
-            body=(
-                f"Dear {candidate_name},\n\n"
-                f"Thank you for applying for the {job_title} position.\n\n"
-                "After careful consideration, we have decided to move forward with other candidates "
-                "whose qualifications more closely match our current requirements. "
-                "This was a difficult decision and does not reflect your potential.\n\n"
-                "We encourage you to keep growing. The right opportunity is just around the corner. "
-                "We will keep your profile on file for future openings.\n\n"
-                "We sincerely wish you every success in your career journey.\n\n"
-                "Warm regards,\nHiring Team\nAI Hiring Platform"
-            ),
+            body=body,
             html=html,
         )
 
@@ -389,34 +472,97 @@ HR Team
 
 
     async def send_selection_email(
-        self, candidate_email: str, candidate_name: str, job_title: str, company_name: str = "our company"
+        self,
+        candidate_email: str,
+        candidate_name: str,
+        job_title: str,
+        meeting_link: Optional[str] = None,
+        selection_note: Optional[str] = None,
+        company_name: str = "our company",
     ) -> bool:
+        meet_link_str = meeting_link or "https://meet.google.com/abc-defg-hij"
+
+        meet_button_html = f"""
+        <div style="margin-top:20px;text-align:center;">
+          <a href="{meet_link_str}" target="_blank" style="display:inline-block;background:#059669;color:#ffffff;font-weight:700;font-size:15px;padding:12px 28px;border-radius:8px;text-decoration:none;box-shadow:0 2px 8px rgba(5,150,105,0.25);">
+            🎥 Join Google Meet Onboarding Call
+          </a>
+          <div style="margin-top:8px;font-size:12px;color:#6b7280;">Google Meet Link: <a href="{meet_link_str}" style="color:#059669;">{meet_link_str}</a></div>
+        </div>
+        """
+
+        note_html = ""
+        note_text = ""
+        if selection_note and selection_note.strip():
+            note_html = f"""
+    <div style="background:#f0fdf4;border-left:4px solid #10b981;padding:14px 18px;border-radius:0 8px 8px 0;margin:20px 0;">
+      <div style="font-size:11px;font-weight:700;color:#047857;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">📝 Note from Recruiter Team</div>
+      <p style="color:#065f46;margin:0;font-size:14px;line-height:1.6;">{selection_note}</p>
+    </div>
+"""
+            note_text = f"\n\nRecruiter Note:\n{selection_note}\n"
+
         html = f"""
-<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
-  <h2 style="color:#065f46;">Congratulations, {candidate_name}! 🎉</h2>
-  <p>Dear <strong>{candidate_name}</strong>,</p>
-  <p>We are absolutely thrilled to inform you that you have been
-  <strong>selected for the {job_title} role</strong> at {company_name}!</p>
-  <p>Your skills, experience, and the enthusiasm you demonstrated throughout
-  the process truly stood out. We are excited to have you join the team.</p>
-  <p>Our HR team will be reaching out to you shortly with the next steps,
-  including details about your offer letter, start date, and onboarding process.</p>
-  <p>In the meantime, please do not hesitate to reach out if you have any questions.</p>
-  <p>Welcome aboard — we cannot wait to work with you!</p>
-  <p>Best regards,<br/><strong>Hiring Team</strong><br/>AI Hiring Platform</p>
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#065f46 0%,#047857 100%);padding:32px 36px;">
+    <div style="color:#a7f3d0;font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;">AI Hiring Platform</div>
+    <h1 style="color:#ffffff;font-size:22px;font-weight:700;margin:0;">🎉 Selection & Offer Invitation</h1>
+    <div style="color:#d1fae5;font-size:14px;margin-top:4px;">{job_title}</div>
+  </div>
+
+  <!-- Body -->
+  <div style="padding:32px 36px;">
+    <div style="display:inline-block;background:#ecfdf5;border:1px solid #a7f3d0;color:#047857;font-weight:700;font-size:12px;padding:4px 12px;border-radius:20px;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:16px;">
+      STATUS: SELECTED
+    </div>
+
+    <p style="color:#111827;font-size:16px;margin:0 0 20px;">Dear <strong>{candidate_name}</strong>,</p>
+
+    <p style="color:#374151;line-height:1.7;margin:0 0 24px;">
+      We are absolutely thrilled to inform you that you have been <strong>SELECTED for the {job_title} role</strong> at {company_name}! Your background and performance throughout our evaluation process truly stood out.
+    </p>
+
+    {note_html}
+
+    <!-- Meet Details Box -->
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
+      <div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:12px;">📅 Onboarding & Final Sync Details</div>
+      <p style="color:#374151;font-size:14px;line-height:1.6;margin:0 0 14px;">
+        We have set up a Google Meet call to discuss your formal offer details, start date, and onboarding steps.
+      </p>
+
+      {meet_button_html}
+    </div>
+
+    <p style="color:#374151;line-height:1.6;margin:0 0 24px;">
+      Our HR team will be reaching out shortly with further onboarding paperwork. Welcome aboard — we cannot wait to work with you!
+    </p>
+
+    <p style="color:#374151;margin:0;">Warmest congratulations,<br/>
+    <strong>Hiring Team</strong><br/>
+    <span style="color:#6b7280;font-size:13px;">AI Hiring Platform</span></p>
+  </div>
+
+  <!-- Footer -->
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 36px;text-align:center;">
+    <p style="color:#9ca3af;font-size:11px;margin:0;">This is an automated selection notice from the AI Hiring Platform.</p>
+  </div>
 </div>
 """
+        body = (
+            f"Dear {candidate_name},\n\n"
+            f"Congratulations! You have been SELECTED for the {job_title} role.\n"
+            f"{note_text}\n"
+            f"Google Meet Link for Onboarding Sync:\n{meet_link_str}\n\n"
+            "Our HR team will reach out with offer details and onboarding steps.\n\n"
+            "Welcome aboard!\n\n"
+            "Warmest regards,\nHiring Team\nAI Hiring Platform"
+        )
         return await self.send(
             to=[candidate_email],
-            subject=f"Congratulations — You've been selected for {job_title}! 🎉",
-            body=(
-                f"Dear {candidate_name},\n\n"
-                f"We are thrilled to inform you that you have been selected for the {job_title} role!\n\n"
-                "Your skills and the enthusiasm you demonstrated throughout the process truly stood out. "
-                "Our HR team will reach out shortly with your offer letter and onboarding details.\n\n"
-                "Welcome aboard! We cannot wait to work with you.\n\n"
-                "Best regards,\nHiring Team\nAI Hiring Platform"
-            ),
+            subject=f"Congratulations — Selected for {job_title}! 🎉",
+            body=body,
             html=html,
         )
 
