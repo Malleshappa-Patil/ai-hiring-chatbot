@@ -5,7 +5,7 @@ import {
   GitBranch, Activity, CheckCircle2, XCircle, AlertCircle, Loader2,
   Briefcase, RefreshCw, ClipboardList, FileText, UserCheck, Send,
   Eye, Search, Users, Video, UserPlus, AlertTriangle, ChevronRight,
-  X, Zap, Brain, Bot, RotateCcw, ArrowRightLeft, Circle
+  X, Zap, Brain, Bot, RotateCcw, ArrowRightLeft, Circle, ChevronDown, User
 } from 'lucide-react'
 import type { JobStatus, AgentLog } from '@/types'
 import toast from 'react-hot-toast'
@@ -383,14 +383,34 @@ export default function WorkflowMonitor() {
   const [activeTab, setActiveTab] = useState<'graph' | 'logs'>('graph')
   const [logSearch, setLogSearch] = useState('')
   const [logFilter, setLogFilter] = useState<'all' | 'success' | 'failure'>('all')
+  const [expandedJobIds, setExpandedJobIds] = useState<Set<string>>(new Set())
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null)
   const panStart = useRef({ mx: 0, my: 0, px: 0, py: 0 })
   const canvasRef = useRef<HTMLDivElement>(null)
   const qc = useQueryClient()
 
   const { data: jobs } = useQuery({ queryKey: ['jobs'], queryFn: () => jobsApi.list({ page_size: 50 }) })
 
+  // Fetch candidates for ALL jobs (for sidebar counts & dropdown)
+  const { data: allCandidatesData } = useQuery({
+    queryKey: ['all-candidates'],
+    queryFn: () => candidatesApi.list({ }),
+    refetchInterval: 10000,
+  })
+  const allCandidates: any[] = allCandidatesData?.items || []
+
+  // Build a map of job_id -> candidates[]
+  const candidatesByJob: Record<string, any[]> = {}
+  allCandidates.forEach((c: any) => {
+    if (!candidatesByJob[c.job_id]) candidatesByJob[c.job_id] = []
+    candidatesByJob[c.job_id].push(c)
+  })
+
   useEffect(() => {
-    if (jobs?.items?.length && !selectedJobId) setSelectedJobId(jobs.items[0].id)
+    if (jobs?.items?.length && !selectedJobId) {
+      setSelectedJobId(jobs.items[0].id)
+      setExpandedJobIds(new Set([jobs.items[0].id]))
+    }
   }, [jobs, selectedJobId])
 
   const { data: workflowState, isError: workflowError } = useQuery({
@@ -564,6 +584,7 @@ export default function WorkflowMonitor() {
 
   const currentJob = jobs?.items?.find(j => j.id === selectedJobId)
   const openDays = currentJob?.application_open_days ?? workflowState?.state_data?.application_open_days ?? 7
+  const selectedCandidate = selectedCandidateId ? allCandidates.find((c: any) => c.id === selectedCandidateId) : null
 
   const mappedNodes = NODES.map((node, index) => {
     const stepNum = index + 1
@@ -596,7 +617,60 @@ export default function WorkflowMonitor() {
     return raw as StageState
   }
 
+  /* ─── Candidate-aware stage derivation ─────────────────────── */
+  // Maps a candidate's status to which workflow nodes should appear completed/running/idle
+  const CANDIDATE_STAGE_MAP: Record<string, { completed: string[], running: string | null, failed?: string }> = {
+    'applied': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring'],
+      running: 'screening',
+    },
+    'screening': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring'],
+      running: 'screening',
+    },
+    'shortlisted': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening'],
+      running: 'human_review',
+    },
+    'interview_scheduled': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review'],
+      running: 'interviewing',
+    },
+    'interviewed': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing'],
+      running: 'candidate_selected',
+    },
+    'selected': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'candidate_selected'],
+      running: 'offer_accepted',
+    },
+    'onboarding': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'candidate_selected', 'offer_accepted'],
+      running: null,
+    },
+    'rejected': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'rejection_email'],
+      running: null,
+      failed: 'rejection_email',
+    },
+  }
+
+  const getCandidateState = (nodeId: string): StageState => {
+    if (!selectedCandidate) return 'idle'
+    const status = selectedCandidate.status || 'applied'
+    const mapping = CANDIDATE_STAGE_MAP[status]
+    if (!mapping) return 'idle'
+    if (mapping.completed.includes(nodeId)) return 'completed'
+    if (mapping.running === nodeId) return 'running'
+    return 'idle'
+  }
+
   const getState = (id: string): StageState => {
+    // If a candidate is selected, use candidate-specific state
+    if (selectedCandidateId && selectedCandidate) {
+      return getCandidateState(id)
+    }
+    // Otherwise, use job-level workflow state
     if (!workflowState) return 'idle'
     const s = getStatus(id)
     if (s !== 'idle') return s
@@ -655,6 +729,17 @@ export default function WorkflowMonitor() {
   const completedCount = mappedNodes.filter(n => getState(n.id) === 'completed').length
   const progress = mappedNodes.length ? Math.round((completedCount / mappedNodes.length) * 100) : 0
   const isStuckInterview = workflowState?.current_stage === 'interviewing' && workflowState?.agent_statuses?.['interview'] === 'running'
+
+  // Candidate status colors for sidebar pills
+  const candidateStatusColor = (status: string) => {
+    switch (status) {
+      case 'selected': case 'onboarding': return { bg: 'rgba(74,222,128,0.15)', color: '#4ade80', border: 'rgba(74,222,128,0.3)' }
+      case 'interview_scheduled': case 'interviewed': return { bg: 'rgba(138,180,160,0.15)', color: '#8ab4a0', border: 'rgba(138,180,160,0.3)' }
+      case 'shortlisted': return { bg: 'rgba(220,159,133,0.15)', color: '#DC9F85', border: 'rgba(220,159,133,0.3)' }
+      case 'rejected': return { bg: 'rgba(239,68,68,0.12)', color: '#ef4444', border: 'rgba(239,68,68,0.25)' }
+      default: return { bg: 'rgba(182,165,150,0.1)', color: '#B6A596', border: 'rgba(182,165,150,0.2)' }
+    }
+  }
 
   const allLogs: AgentLog[] = logs ? [...logs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()) : []
 
@@ -729,7 +814,7 @@ export default function WorkflowMonitor() {
           ))}
         </div>
 
-        {/* Active Roles */}
+        {/* Active Roles — Accordion with Candidate Dropdowns */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '12px 10px' }}>
           <div style={{ fontSize: 9, fontWeight: 700, color: '#7A6A5E', textTransform: 'uppercase', letterSpacing: '0.12em', padding: '0 4px', marginBottom: 8 }}>
             Active Roles ({jobs?.items?.length || 0})
@@ -741,23 +826,130 @@ export default function WorkflowMonitor() {
             </div>
           ) : jobs.items.map(j => {
             const isSel = j.id === selectedJobId
+            const isExpanded = expandedJobIds.has(j.id)
+            const jobCandidates = candidatesByJob[j.id] || []
+            const toggleExpand = (e: React.MouseEvent) => {
+              e.stopPropagation()
+              setExpandedJobIds(prev => {
+                const next = new Set(prev)
+                if (next.has(j.id)) next.delete(j.id)
+                else next.add(j.id)
+                return next
+              })
+            }
+            const selectJob = () => {
+              setSelectedJobId(j.id)
+              setSelectedCandidateId(null)
+              setSelectedNode(null)
+              // Auto-expand when selecting a job
+              setExpandedJobIds(prev => {
+                const next = new Set(prev)
+                next.add(j.id)
+                return next
+              })
+            }
             return (
-              <div key={j.id} onClick={() => { setSelectedJobId(j.id); setSelectedNode(null) }}
-                style={{
-                  padding: '11px 12px', borderRadius: 4, marginBottom: 6, cursor: 'pointer',
-                  transition: 'all 0.15s',
-                  background: isSel ? 'rgba(220,159,133,0.08)' : '#221D1A',
-                  border: `1px solid ${isSel ? '#66473B' : '#35211A'}`,
-                }}
-                onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.borderColor = '#66473B' }}
-                onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.borderColor = '#35211A' }}
-              >
-                <div style={{ fontWeight: 600, fontSize: 13, color: isSel ? '#EBDCC4' : '#B6A596', marginBottom: 2 }}>{j.title}</div>
-                <div style={{ fontSize: 11, color: '#7A6A5E', marginBottom: 6 }}>{j.department} · {j.location}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                  <span style={{ width: 5, height: 5, borderRadius: '50%', background: jobStatusColor[j.status] || '#7A6A5E' }} />
-                  <span style={{ fontSize: 10, color: '#7A6A5E', fontWeight: 600 }}>{jobStatusLabel[j.status] || j.status}</span>
+              <div key={j.id} style={{ marginBottom: 6 }}>
+                {/* Job Role Header (Accordion Toggle) */}
+                <div
+                  onClick={selectJob}
+                  style={{
+                    padding: '11px 12px', borderRadius: isExpanded && jobCandidates.length > 0 ? '4px 4px 0 0' : 4,
+                    cursor: 'pointer', transition: 'all 0.15s',
+                    background: isSel ? 'rgba(220,159,133,0.08)' : '#221D1A',
+                    border: `1px solid ${isSel ? '#66473B' : '#35211A'}`,
+                    borderBottom: isExpanded && jobCandidates.length > 0 ? '1px solid #35211A' : undefined,
+                  }}
+                  onMouseEnter={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.borderColor = '#66473B' }}
+                  onMouseLeave={e => { if (!isSel) (e.currentTarget as HTMLDivElement).style.borderColor = '#35211A' }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                    <div style={{ fontWeight: 600, fontSize: 13, color: isSel && !selectedCandidateId ? '#EBDCC4' : isSel ? '#B6A596' : '#B6A596', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{j.title}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+                      {jobCandidates.length > 0 && (
+                        <span style={{ fontSize: 9, fontWeight: 700, color: '#DC9F85', background: 'rgba(220,159,133,0.12)', padding: '1px 5px', borderRadius: 3, border: '1px solid rgba(220,159,133,0.2)' }}>
+                          {jobCandidates.length}
+                        </span>
+                      )}
+                      <button
+                        onClick={toggleExpand}
+                        style={{ background: 'none', border: 'none', color: '#7A6A5E', cursor: 'pointer', padding: 2, display: 'flex', alignItems: 'center', transition: 'transform 0.2s' }}
+                      >
+                        <ChevronDown size={14} style={{ transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform 0.2s' }} />
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#7A6A5E', marginBottom: 4 }}>{j.department} · {j.location}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', background: jobStatusColor[j.status] || '#7A6A5E' }} />
+                    <span style={{ fontSize: 10, color: '#7A6A5E', fontWeight: 600 }}>{jobStatusLabel[j.status] || j.status}</span>
+                  </div>
                 </div>
+
+                {/* Candidate Dropdown List (visible when expanded) */}
+                {isExpanded && isSel && (
+                  <div style={{
+                    background: '#1A1715',
+                    border: '1px solid #35211A', borderTop: 'none',
+                    borderRadius: '0 0 4px 4px',
+                    padding: jobCandidates.length > 0 ? '6px 0' : '10px 12px',
+                    maxHeight: 240, overflowY: 'auto',
+                  }}>
+                    {jobCandidates.length === 0 ? (
+                      <div style={{ fontSize: 11, color: '#5A4E44', fontStyle: 'italic', textAlign: 'center', padding: '4px 0' }}>
+                        No candidates applied yet
+                      </div>
+                    ) : (
+                      jobCandidates.map((c: any) => {
+                        const isSelCandidate = selectedCandidateId === c.id
+                        const statusStyle = candidateStatusColor(c.status)
+                        return (
+                          <div
+                            key={c.id}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setSelectedJobId(j.id)
+                              setSelectedCandidateId(isSelCandidate ? null : c.id)
+                              setSelectedNode(null)
+                              setHasFit(false)
+                            }}
+                            style={{
+                              padding: '7px 12px 7px 16px', cursor: 'pointer',
+                              transition: 'all 0.15s',
+                              background: isSelCandidate ? 'rgba(220,159,133,0.1)' : 'transparent',
+                              borderLeft: isSelCandidate ? '3px solid #DC9F85' : '3px solid transparent',
+                              display: 'flex', alignItems: 'center', gap: 8,
+                            }}
+                            onMouseEnter={e => { if (!isSelCandidate) (e.currentTarget as HTMLDivElement).style.background = 'rgba(220,159,133,0.04)' }}
+                            onMouseLeave={e => { if (!isSelCandidate) (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
+                          >
+                            <div style={{
+                              width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+                              background: isSelCandidate ? 'rgba(220,159,133,0.15)' : 'rgba(182,165,150,0.08)',
+                              border: `1px solid ${isSelCandidate ? 'rgba(220,159,133,0.3)' : '#35211A'}`,
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            }}>
+                              <User size={12} color={isSelCandidate ? '#DC9F85' : '#7A6A5E'} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: 11.5, fontWeight: 600, color: isSelCandidate ? '#EBDCC4' : '#B6A596', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+                              <div style={{
+                                fontSize: 8.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em',
+                                color: statusStyle.color, marginTop: 1,
+                              }}>
+                                {(c.status || 'applied').replace(/_/g, ' ')}
+                              </div>
+                            </div>
+                            <div style={{
+                              width: 6, height: 6, borderRadius: '50%', flexShrink: 0,
+                              background: statusStyle.color, opacity: 0.7,
+                            }} />
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                )}
               </div>
             )
           })}
@@ -779,12 +971,31 @@ export default function WorkflowMonitor() {
               <div>
                 <div style={{ fontSize: 9, color: '#7A6A5E', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.14em' }}>
                   Multi-Agent Workflow Graph · {currentJob?.title}
+                  {selectedCandidate && (
+                    <span style={{ color: '#DC9F85', marginLeft: 6 }}>· {selectedCandidate.name}</span>
+                  )}
                 </div>
-                {currentJob?.hiring_goal && (
+                {selectedCandidate ? (
+                  <div style={{ fontSize: 11, color: '#B6A596', marginTop: 2, display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span>Candidate: <span style={{ color: '#EBDCC4', fontWeight: 600 }}>{selectedCandidate.name}</span></span>
+                    <span style={{ color: '#5A4E44' }}>·</span>
+                    <span style={{ color: '#DC9F85', fontSize: 10 }}>{selectedCandidate.email}</span>
+                    <button
+                      onClick={() => { setSelectedCandidateId(null); setHasFit(false) }}
+                      style={{
+                        background: 'rgba(182,165,150,0.1)', border: '1px solid #35211A', borderRadius: 3,
+                        color: '#7A6A5E', fontSize: 9, fontWeight: 700, cursor: 'pointer', padding: '2px 6px',
+                        textTransform: 'uppercase', letterSpacing: '0.08em', marginLeft: 4,
+                      }}
+                    >
+                      ✕ Clear
+                    </button>
+                  </div>
+                ) : currentJob?.hiring_goal ? (
                   <div style={{ fontSize: 11, color: '#B6A596', marginTop: 2 }}>
                     Goal: <span style={{ color: '#EBDCC4', fontStyle: 'italic' }}>"{currentJob.hiring_goal}"</span>
                   </div>
-                )}
+                ) : null}
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -815,7 +1026,16 @@ export default function WorkflowMonitor() {
                   </div>
                 </div>
 
-                {workflowState ? (() => {
+                {selectedCandidate ? (() => {
+                  const cStatus = (selectedCandidate.status || 'applied').replace(/_/g, ' ')
+                  const cColor = candidateStatusColor(selectedCandidate.status)
+                  return (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', background: cColor.bg, borderRadius: 4, border: `1px solid ${cColor.border}` }}>
+                      <User size={11} color={cColor.color} />
+                      <span style={{ fontSize: 10, fontWeight: 700, color: cColor.color, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{cStatus}</span>
+                    </div>
+                  )
+                })() : workflowState ? (() => {
                   const cs = workflowState.current_stage
                   const label = cs === 'completed' ? 'Completed' : cs === 'failed' ? 'Failed' : `Active: ${cs.replace(/_/g, ' ')}`
                   return (
