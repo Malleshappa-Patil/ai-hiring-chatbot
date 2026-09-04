@@ -3,13 +3,15 @@ Resume Screening Agent — Step 11 from agentic-workflow.md.
 Parses resumes, compares against JD, ranks and shortlists candidates.
 
 Tools:
-- Resume Parser (mock)
-- ATS Scoring Engine (LLM-based)
+- Resume Parser (PyMuPDF / python-docx)
+- ATS Scoring Engine (Gemini LLM)
 - Vector Database (ChromaDB via RAG)
 """
-import random
+import json
+import re
+import asyncio
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import HumanMessage
 from backend.config import settings
 from backend.workflows.state import HiringState
 
@@ -19,126 +21,202 @@ llm = ChatGoogleGenerativeAI(
     google_api_key=settings.GOOGLE_API_KEY
 )
 
-SCREENING_PROMPT = """You are an expert ATS (Applicant Tracking System) and technical recruiter.
+SCREENING_PROMPT = """You are an expert ATS (Applicant Tracking System) and senior technical recruiter.
 
-Job Description:
+## Job Description
 {jd_content}
 
-Required Skills: {skills}
-Experience Required: {experience}
+## Required Skills
+{skills}
 
-Candidate Profile:
-Name: {candidate_name}
-Skills: {candidate_skills}
-Experience: {candidate_experience} years
-Education: {candidate_education}
-Previous Roles: {candidate_roles}
+## Experience Required
+{experience}
 
-Evaluate this candidate against the JD and provide:
-1. Match Score (0-100)
-2. Match Category: "Strong Match" / "Partial Match" / "Weak Match"
-3. Key Strengths (bullet points)
-4. Gaps (bullet points)
-5. Recommendation (1-2 sentences)
+## Candidate Resume
+{resume_text}
 
-Respond in JSON format:
+Evaluate how well this candidate's resume matches the job description above.
+Be objective, specific, and base your score strictly on what is written in the resume.
+
+Return ONLY a valid JSON object (no markdown, no extra text) with this exact schema:
 {{
-  "score": <number>,
-  "category": "<category>",
-  "strengths": ["<strength1>", "<strength2>"],
-  "gaps": ["<gap1>", "<gap2>"],
-  "recommendation": "<text>"
+  "score": <float 0-100, overall ATS match percentage>,
+  "category": "<one of: strong_match | partial_match | weak_match>",
+  "skills_matched": [<list of specific technical skills from JD that the candidate has>],
+  "skills_missing": [<list of specific technical skills from JD that the candidate lacks>],
+  "explanation": "<2-3 sentence summary of how well the candidate fits>"
 }}
+
+Category rules:
+- strong_match  : score >= 70
+- partial_match : score >= 50 and < 70
+- weak_match    : score < 50
 """
 
-# Mock candidate database (in real app, these come from applications/DB)
-MOCK_CANDIDATES = [
-    {"id": f"CAND-{i:04d}", "name": f"Candidate {i}", 
-     "skills": ["Python", "FastAPI", "PostgreSQL", "Docker", "AWS"][:random.randint(2,5)],
-     "experience": random.randint(1, 10),
-     "education": random.choice(["B.Tech CS", "M.Tech CS", "BCA", "MCA", "B.Sc IT"]),
-     "roles": random.choice(["Backend Developer", "Full Stack Engineer", "Software Engineer", "DevOps Engineer"])}
-    for i in range(1, 21)  # 20 mock candidates
-]
+
+llm = ChatGoogleGenerativeAI(
+    model=settings.GEMINI_MODEL,
+    temperature=0.1,
+    google_api_key=settings.GOOGLE_API_KEY
+)
+
+
+def _parse_gemini_json(raw: str) -> dict:
+    """Strip markdown fences and parse JSON from Gemini response."""
+    raw = raw.strip()
+    if raw.startswith("```"):
+        parts = raw.split("```")
+        raw = parts[1] if len(parts) > 1 else raw
+        if raw.startswith("json"):
+            raw = raw[4:]
+    raw = raw.strip()
+    return json.loads(raw)
+
+
+def _normalize_category(category: str, score: float) -> str:
+    """
+    Normalize LLM-returned category to DB enum values.
+    Handles: 'Strong Match', 'strong_match', 'STRONG MATCH', etc.
+    Falls back to score-based assignment if unrecognised.
+    """
+    normalized = category.lower().replace(" ", "_").replace("-", "_")
+    if "strong" in normalized:
+        return "strong_match"
+    if "partial" in normalized:
+        return "partial_match"
+    if "weak" in normalized:
+        return "weak_match"
+    # Score-based fallback
+    if score >= 70:
+        return "strong_match"
+    if score >= 50:
+        return "partial_match"
+    return "weak_match"
+
+
+def _score_candidate(jd_content: str, skills: str, experience: str,
+                     resume_text: str) -> dict:
+    """Call Gemini synchronously to score one candidate resume against the JD."""
+    if not resume_text.strip():
+        return {
+            "score": 0.0,
+            "category": "weak_match",
+            "skills_matched": [],
+            "skills_missing": [],
+            "explanation": "No resume text available — cannot score this candidate.",
+        }
+
+    prompt = SCREENING_PROMPT.format(
+        jd_content=jd_content[:4000],
+        skills=skills,
+        experience=experience,
+        resume_text=resume_text[:6000],
+    )
+    try:
+        response = llm.invoke([HumanMessage(content=prompt)])
+        parsed = _parse_gemini_json(response.content)
+        score = max(0.0, min(100.0, float(parsed.get("score", 0))))
+        category = _normalize_category(parsed.get("category", ""), score)
+        return {
+            "score": score,
+            "category": category,
+            "skills_matched": parsed.get("skills_matched", []),
+            "skills_missing": parsed.get("skills_missing", []),
+            "explanation": parsed.get("explanation", ""),
+        }
+    except json.JSONDecodeError as e:
+        print(f"  [Screening] JSON parse error: {e} | raw={response.content[:300]}")
+        return {
+            "score": 0.0,
+            "category": "weak_match",
+            "skills_matched": [],
+            "skills_missing": [],
+            "explanation": "Scoring failed (invalid response). Manual review required.",
+        }
+    except Exception as e:
+        print(f"  [Screening] Gemini call failed: {e}")
+        return {
+            "score": 0.0,
+            "category": "weak_match",
+            "skills_matched": [],
+            "skills_missing": [],
+            "explanation": f"Scoring unavailable ({e}). Manual review required.",
+        }
 
 
 def screening_node(state: HiringState) -> dict:
     """
     Resume Screening Agent — Step 11 from agentic-workflow.md.
-    Shortlists candidates based on JD match score.
+    Scores real candidates from the workflow state against the approved JD.
+    Falls back to empty list if no real applicants are present yet.
     """
     jd_content = state.get("jd_content", "")
-    hiring_req = state.get("hiring_request", {})
-    skills = ", ".join(hiring_req.get("skills_required", []))
-    experience = hiring_req.get("experience_years", "3+ years")
-    candidates_needed = state.get("candidates_needed", 
-                                  hiring_req.get("candidates_needed", 1))
-    application_count = state.get("application_count", 0)
-    
-    # Use available candidates (capped at application_count)
-    pool = MOCK_CANDIDATES[:min(application_count, len(MOCK_CANDIDATES))]
-    if not pool:
-        pool = MOCK_CANDIDATES[:10]  # fallback
+    hiring_req  = state.get("hiring_request", {})
+    skills      = ", ".join(hiring_req.get("skills_required", []))
+    experience  = hiring_req.get("experience_years", "3+ years")
+    candidates_needed = state.get(
+        "candidates_needed",
+        hiring_req.get("candidates_needed", 1),
+    )
 
-    print(f"[Screening Agent] Evaluating {len(pool)} candidates for '{hiring_req.get('job_title', 'role')}'...")
-    
+    # Real candidates come from data["real_candidates"] — populated by
+    # run_screening_for_candidate() via the HireBoard integration.
+    data            = state.get("data", {})
+    real_candidates = data.get("real_candidates", [])
+
+    print(
+        f"[Screening Agent] Evaluating {len(real_candidates)} real candidates "
+        f"for '{hiring_req.get('job_title', 'role')}'..."
+    )
+
+    if not real_candidates:
+        print("[Screening Agent] No real candidates in state yet — skipping scoring.")
+        return {
+            "shortlisted_candidates": [],
+            "candidate_rankings":     {},
+            "agent_statuses":         {"screening": "completed"},
+            "next_action":            "interview_scheduling",
+        }
+
     shortlisted = []
-    rankings = {}
+    rankings    = {}
+    threshold   = settings.CV_MATCH_THRESHOLD  # default 70.0
 
-    for candidate in pool:
-        try:
-            prompt = SCREENING_PROMPT.format(
-                jd_content=jd_content[:2000],  # Truncate for token limits
-                skills=skills,
-                experience=experience,
-                candidate_name=candidate["name"],
-                candidate_skills=", ".join(candidate["skills"]),
-                candidate_experience=candidate["experience"],
-                candidate_education=candidate["education"],
-                candidate_roles=candidate["roles"],
-            )
-            response = llm.invoke(prompt)
-            
-            import json, re
-            # Extract JSON from response
-            json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
-            if json_match:
-                evaluation = json.loads(json_match.group())
-            else:
-                evaluation = {"score": 50, "category": "Partial Match", 
-                             "strengths": [], "gaps": [], "recommendation": "Manual review needed"}
-        except Exception as e:
-            print(f"  [Screening] Error evaluating {candidate['name']}: {e}")
-            evaluation = {"score": random.randint(40, 80), "category": "Partial Match",
-                         "strengths": ["Technical background"], "gaps": [], 
-                         "recommendation": "Requires manual review"}
+    for candidate in real_candidates:
+        cid         = candidate.get("id", "unknown")
+        name        = candidate.get("name", "Unknown")
+        resume_text = candidate.get("resume_text", "")
+
+        evaluation = _score_candidate(jd_content, skills, experience, resume_text)
+        score      = evaluation["score"]
+        category   = evaluation["category"]
+
+        rankings[cid] = score
 
         candidate_result = {
             **candidate,
-            "score": evaluation.get("score", 50),
-            "category": evaluation.get("category", "Partial Match"),
-            "strengths": evaluation.get("strengths", []),
-            "gaps": evaluation.get("gaps", []),
-            "recommendation": evaluation.get("recommendation", ""),
+            "score":          score,
+            "category":       category,
+            "skills_matched": evaluation["skills_matched"],
+            "skills_missing": evaluation["skills_missing"],
+            "explanation":    evaluation["explanation"],
         }
-        rankings[candidate["id"]] = evaluation.get("score", 50)
-        
-        # Shortlist: Strong Match + top Partial Matches
-        if evaluation.get("category") in ["Strong Match", "Partial Match"] and evaluation.get("score", 0) >= 60:
-            shortlisted.append(candidate_result)
-            print(f"  ✅ {candidate['name']}: {evaluation.get('score')}/100 — {evaluation.get('category')}")
-        else:
-            print(f"  ❌ {candidate['name']}: {evaluation.get('score')}/100 — {evaluation.get('category')} (filtered)")
 
-    # Sort by score, take top candidates_needed * 3 for interviews
+        if score >= threshold:
+            shortlisted.append(candidate_result)
+            print(f"  ✅ {name}: {score:.1f}/100 — {category}")
+        else:
+            print(f"  ❌ {name}: {score:.1f}/100 — {category} (below threshold {threshold})")
+
+    # Sort by score descending; take top (candidates_needed * 3) for interviews
     shortlisted.sort(key=lambda x: x.get("score", 0), reverse=True)
-    interview_pool = shortlisted[:max(candidates_needed * 3, 5)]
+    interview_pool = shortlisted[: max(candidates_needed * 3, 5)]
 
     print(f"[Screening Agent] Shortlisted {len(interview_pool)} candidates for interviews.")
 
     return {
         "shortlisted_candidates": interview_pool,
-        "candidate_rankings": rankings,
-        "agent_statuses": {"screening": "completed"},
-        "next_action": "interview_scheduling",
+        "candidate_rankings":     rankings,
+        "agent_statuses":         {"screening": "completed"},
+        "next_action":            "interview_scheduling",
     }

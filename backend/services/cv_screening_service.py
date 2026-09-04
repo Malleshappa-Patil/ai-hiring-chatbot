@@ -454,6 +454,10 @@ async def _score_with_gemini(cv_text: str, jd_text: str, job_title: str) -> dict
     cv_snippet = cv_text[:6000]  if cv_text  else "(no resume text available)"
     jd_snippet = jd_text[:4000]  if jd_text  else "(no job description available)"
 
+    if not cv_text or not cv_text.strip():
+        logger.warning(f"[Screening] Empty resume text for job '{job_title}' — scoring as 0")
+        return _fallback_score(reason="empty_resume")
+
     prompt = f"""You are an expert AI hiring assistant. Evaluate how well the candidate's resume
 matches the job description below. Be objective, specific, and fair.
 
@@ -473,11 +477,12 @@ Return ONLY a valid JSON object (no markdown, no explanation outside the JSON) w
 }}
 
 Rules:
-- strong_match : score >= 75
-- partial_match: score >= 50 and < 75
+- strong_match : score >= 70
+- partial_match: score >= 50 and < 70
 - weak_match   : score < 50
 - Base the score strictly on alignment between resume and JD requirements
 - List only concrete technical skills, not generic soft skills
+- If the resume text is empty or garbled, return score: 0 and category: weak_match
 """
 
     raw = ""
@@ -509,24 +514,34 @@ Rules:
         valid_cats = {"strong_match", "partial_match", "weak_match"}
         if parsed.get("category") not in valid_cats:
             s = parsed["score"]
-            parsed["category"] = "strong_match" if s >= 75 else "partial_match" if s >= 50 else "weak_match"
+            parsed["category"] = "strong_match" if s >= 70 else "partial_match" if s >= 50 else "weak_match"
 
         return parsed
 
     except json.JSONDecodeError as e:
         logger.error(f"[Screening] Gemini returned invalid JSON: {e}\nRaw: {raw[:500]}")
-        return _fallback_score()
+        return _fallback_score(reason="json_error")
     except Exception as e:
         logger.error(f"[Screening] Gemini scoring failed: {e}")
-        return _fallback_score()
+        return _fallback_score(reason="api_error")
 
 
-def _fallback_score() -> dict:
-    """Return a neutral score when Gemini is unavailable."""
+def _fallback_score(reason: str = "unavailable") -> dict:
+    """Return a neutral score when Gemini is unavailable or resume is empty."""
+    if reason == "empty_resume":
+        return {
+            "score": 0.0,
+            "category": "weak_match",
+            "explanation": "No resume was provided or the file could not be parsed. Please upload a valid PDF or DOCX.",
+            "skills_matched": [],
+            "skills_missing": [],
+        }
+    # Generic API failure — return partial_match so the candidate is not auto-rejected
+    # and can be manually reviewed by the recruiter.
     return {
-        "score": 0.0,
-        "category": "weak_match",
-        "explanation": "Automated scoring was unavailable. Please review this candidate manually.",
+        "score": 50.0,
+        "category": "partial_match",
+        "explanation": "Automated scoring was temporarily unavailable. Please review this candidate manually.",
         "skills_matched": [],
         "skills_missing": [],
     }
