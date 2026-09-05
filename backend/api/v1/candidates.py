@@ -485,6 +485,9 @@ async def select_candidate(
     except Exception as wf_err:
         logger.warning(f"Could not update workflow state on candidate select: {wf_err}")
 
+    # Check if all interviewed candidates are reviewed → trigger offer letter
+    await workflow_service.check_interview_review_status(db, candidate.job_id)
+
     logger.info(f"Candidate {candidate.name} selected by {current_user.email} (email_sent={email_sent})")
     return {
         "message":      f"{candidate.name} has been SELECTED." + (" Selection email sent." if email_sent else " (WARNING: Email delivery failed via SMTP)."),
@@ -493,6 +496,45 @@ async def select_candidate(
         "meeting_link": meeting_link,
         "email_sent":   email_sent,
     }
+
+
+# -- Offer Response: Accept / Reject (called by candidate via email link) ------
+@router.post("/{candidate_id}/offer-accept", status_code=200)
+async def accept_offer(
+    candidate_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public endpoint — no auth required. Called when candidate clicks
+    'Accept Offer' in the offer letter email.
+    """
+    from backend.services.workflow_service import workflow_service
+
+    result = await workflow_service.handle_offer_response(
+        db, candidate_id, accepted=True
+    )
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
+
+
+@router.post("/{candidate_id}/offer-reject", status_code=200)
+async def reject_offer(
+    candidate_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public endpoint — no auth required. Called when candidate clicks
+    'Decline Offer' in the offer letter email.
+    """
+    from backend.services.workflow_service import workflow_service
+
+    result = await workflow_service.handle_offer_response(
+        db, candidate_id, accepted=False
+    )
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
 
 
 # -- Post-Interview / Review: Final Reject Candidate ---------------------------
@@ -562,6 +604,10 @@ async def reject_candidate_final(
         logger.warning(f"Could not update workflow state on candidate reject: {wf_err}")
 
     logger.info(f"Candidate {candidate.name} final-rejected by {current_user.email} (email_sent={email_sent})")
+
+    # Check if all interviewed candidates are reviewed → trigger offer letter if someone was selected
+    await workflow_service.check_interview_review_status(db, candidate.job_id)
+
     return {
         "message":      f"{candidate.name} has been rejected." + (" Rejection email sent." if email_sent else " (WARNING: Email delivery failed via SMTP)."),
         "candidate_id": candidate_id,

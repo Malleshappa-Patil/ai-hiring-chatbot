@@ -28,6 +28,10 @@ WORKFLOW_STAGES = [
     "screening",
     "human_review",
     "interviewing",
+    "interview_review",   # recruiter reviews interview results & selects candidate
+    "offer_letter",       # AI generates and sends offer letter
+    "offer_response",     # waiting for candidate to accept/reject
+    "renegotiation",      # if candidate declines offer
     "onboarding",
     "completed",
 ]
@@ -648,19 +652,25 @@ significant impact on our products and services.
         self, workflow_id: str, job_id: str
     ) -> None:
         """
-        Background task to simulate the interviewing stage.
-        Conducts interviews with ALL shortlisted candidates and selects the best one for onboarding.
+        Background task for the interviewing stage.
+        1. Creates interview records for shortlisted candidates
+        2. Generates Google Meet links
+        3. Sends interview invitation emails to each candidate
+        4. Marks interviews as completed after a delay
+        5. Advances to interview_review — STOPS for recruiter manual action
         """
         from backend.database.session import AsyncSessionLocal
-        from backend.database.models import Candidate, CandidateScore, Interview
+        from backend.database.models import Candidate, CandidateScore, Interview, Job
+        from backend.services.notification_service import email_service
+        from backend.services.google_meet_service import create_meeting
         from sqlalchemy.orm import selectinload
         from datetime import datetime, timedelta
 
         async with AsyncSessionLocal() as db:
             try:
-                await asyncio.sleep(5)  # Simulate scheduling and conducting interviews
+                await asyncio.sleep(3)  # Small delay before scheduling
 
-                # Get shortlisted candidates (also check interview_scheduled as a fallback)
+                # Get shortlisted candidates
                 result = await db.execute(
                     select(Candidate)
                     .where(Candidate.job_id == job_id)
@@ -670,55 +680,87 @@ significant impact on our products and services.
                 shortlisted = result.scalars().all()
 
                 if not shortlisted:
-                    # Last chance: check if interviews were already created but candidates advanced
-                    re_result = await db.execute(
-                        select(Candidate)
-                        .where(Candidate.job_id == job_id)
-                        .where(Candidate.status == "interviewed")
+                    await self._log_agent_action(
+                        db, workflow_id,
+                        agent_name="Interview Agent",
+                        action="conduct_interviews",
+                        input_summary="No shortlisted candidates",
+                        output_summary="No candidates were shortlisted for interviews. Cannot proceed.",
+                        latency_ms=100, token_usage=0,
+                        status="success"
                     )
-                    already_interviewed = re_result.scalars().all()
-                    if not already_interviewed:
-                        await self._log_agent_action(
-                            db, workflow_id,
-                            agent_name="Interview Agent",
-                            action="conduct_interviews",
-                            input_summary="No shortlisted candidates",
-                            output_summary="No candidates were shortlisted for the interview round. Cannot proceed.",
-                            latency_ms=100, token_usage=0,
-                            status="success"
-                        )
-                        # Move directly to no_candidates_selected
-                        await self.advance_stage(db, workflow_id, "failed", {
-                            "interview": "no_candidates_selected"
-                        })
-                        return
-                    else:
-                        shortlisted = already_interviewed
+                    await self.advance_stage(db, workflow_id, "failed", {
+                        "interview": "no_candidates_selected"
+                    })
+                    return
 
-                # Schedule and conduct interviews for ALL shortlisted candidates
+                # Load job info
+                job_result = await db.execute(select(Job).where(Job.id == job_id))
+                job = job_result.scalar_one_or_none()
+                job_title = job.title if job else "the position"
+
+                # Schedule interviews for ALL shortlisted candidates
                 interviewers = ["Priya Sharma", "Rahul Mehta", "John Manager", "Sarah Chen"]
                 interview_types = ["technical", "hr", "cultural_fit", "final"]
                 for i, candidate in enumerate(shortlisted):
+                    scheduled_time = datetime.utcnow() + timedelta(days=1, hours=i * 2)
+
+                    # Generate a real Google Meet link
+                    meeting_link = await create_meeting(
+                        candidate_name=candidate.name,
+                        job_title=job_title,
+                        scheduled_at=scheduled_time,
+                        duration_minutes=45,
+                        interviewer=interviewers[i % len(interviewers)],
+                    )
+
                     candidate.status = "interview_scheduled"
                     interview = Interview(
                         candidate_id=candidate.id,
                         job_id=job_id,
-                        scheduled_at=datetime.utcnow() - timedelta(hours=2 + i),
+                        scheduled_at=scheduled_time,
                         duration_minutes=45,
                         interviewer=interviewers[i % len(interviewers)],
                         interview_type=interview_types[i % len(interview_types)],
                         status="scheduled",
-                        meeting_link=f"https://meet.google.com/abc-def-{i:03d}"
+                        meeting_link=meeting_link,
                     )
                     db.add(interview)
 
-                await db.commit()
-                await asyncio.sleep(3)  # Simulate conducting the interviews
+                    # Send interview invitation email to the candidate
+                    await email_service.send_interview_invitation(
+                        candidate_email=candidate.email,
+                        candidate_name=candidate.name,
+                        job_title=job_title,
+                        scheduled_at=scheduled_time.strftime("%B %d, %Y at %I:%M %p UTC"),
+                        interviewer=interviewers[i % len(interviewers)],
+                        meeting_link=meeting_link,
+                    )
+                    logger.info(
+                        f"[Interview] Invitation sent to {candidate.name} ({candidate.email}) "
+                        f"at {scheduled_time.strftime('%Y-%m-%d %H:%M')} — {meeting_link}"
+                    )
 
-                # Mark all as interviewed
+                await db.commit()
+
+                await self._log_agent_action(
+                    db, workflow_id,
+                    agent_name="Interview Agent",
+                    action="schedule_interviews",
+                    input_summary=f"{len(shortlisted)} candidate(s): {', '.join(c.name for c in shortlisted)}",
+                    output_summary=(
+                        f"Scheduled interviews for {len(shortlisted)} candidate(s). "
+                        f"Google Meet invitations sent to all candidates via email."
+                    ),
+                    latency_ms=2500, token_usage=400,
+                )
+
+                # Simulate interview completion after a brief delay
+                await asyncio.sleep(5)
+
+                # Mark all interviews as completed and candidates as interviewed
                 for candidate in shortlisted:
                     candidate.status = "interviewed"
-                    # Mark their interview as completed
                     iv_result = await db.execute(
                         select(Interview)
                         .where(Interview.candidate_id == candidate.id)
@@ -728,67 +770,373 @@ significant impact on our products and services.
                         iv.status = "completed"
                 await db.commit()
 
-                # Select the best candidate (highest score wins, or first if scores are tied)
-                def get_score(c: Candidate) -> float:
-                    if hasattr(c, 'score') and c.score:
-                        return c.score.score
-                    return 0.0
-
-                best_candidate = max(shortlisted, key=get_score)
-
-                # Mark the best one as selected, others remain as interviewed
-                best_candidate.status = "selected"
-                await db.commit()
-
-                names = [c.name for c in shortlisted]
                 await self._log_agent_action(
                     db, workflow_id,
                     agent_name="Interview Agent",
-                    action="conduct_interviews",
-                    input_summary=f"{len(shortlisted)} candidate(s): {', '.join(names)}",
-                    output_summary=f"Conducted interviews with {len(shortlisted)} candidate(s). {best_candidate.name} scored highest and received an offer.",
-                    latency_ms=3500, token_usage=800,
+                    action="complete_interviews",
+                    input_summary=f"{len(shortlisted)} interview(s) completed",
+                    output_summary=(
+                        f"All {len(shortlisted)} interview(s) completed. "
+                        f"Awaiting recruiter review — please select or reject each candidate."
+                    ),
+                    latency_ms=1200, token_usage=200,
                 )
 
-                # Advance to onboarding stage
-                await self.advance_stage(db, workflow_id, "onboarding", {
-                    "interview": "completed", "onboarding": "running"
+                # Advance to interview_review — STOP here for recruiter manual action
+                await self.advance_stage(db, workflow_id, "interview_review", {
+                    "interview": "completed",
+                    "interview_review": "waiting_approval",
                 })
 
-                # Kick off onboarding background simulation
-                asyncio.create_task(
-                    self._simulate_onboarding_bg(workflow_id, job_id)
+                logger.info(
+                    f"Interview stage complete for job {job_id}. "
+                    f"Workflow paused at interview_review for recruiter action."
                 )
-
-                logger.info(f"Interview simulation complete for job {job_id}")
             except Exception as e:
                 logger.error(f"Interview simulation failed for job {job_id}: {e}")
                 import traceback; traceback.print_exc()
+
+    async def check_interview_review_status(
+        self, db: AsyncSession, job_id: str
+    ) -> None:
+        """
+        After the recruiter selects/rejects candidates post-interview,
+        check if all interviewed candidates have been reviewed.
+        If a candidate is selected → generate and send offer letter.
+        """
+        from backend.database.models import Candidate
+
+        # Count candidates still in 'interviewed' status (not yet reviewed)
+        remaining = await db.execute(
+            select(func.count(Candidate.id))
+            .where(Candidate.job_id == job_id)
+            .where(Candidate.status == "interviewed")
+        )
+        remaining_count = remaining.scalar() or 0
+
+        if remaining_count > 0:
+            # Still waiting for recruiter to review remaining candidates
+            return
+
+        workflow = await self.get_workflow_status(db, job_id)
+        if not workflow or workflow.current_stage != "interview_review":
+            return
+
+        # Check if any candidate was selected
+        selected = await db.execute(
+            select(Candidate)
+            .where(Candidate.job_id == job_id)
+            .where(Candidate.status == "selected")
+        )
+        selected_candidate = selected.scalars().first()
+
+        if selected_candidate:
+            # Advance to offer_letter and generate the offer
+            await self.advance_stage(db, workflow.id, "offer_letter", {
+                "interview_review": "completed",
+                "offer_letter": "running",
+            })
+            await self._log_agent_action(
+                db, workflow.id,
+                agent_name="Supervisor Agent",
+                action="interview_review_completed",
+                input_summary=f"Job ID: {job_id}",
+                output_summary=f"Recruiter selected {selected_candidate.name} after interview review. Generating offer letter.",
+                latency_ms=100, token_usage=0,
+            )
+            # Fire offer letter generation in background
+            asyncio.create_task(
+                self._generate_and_send_offer_bg(workflow.id, job_id, selected_candidate.id)
+            )
+        else:
+            # All reviewed but nobody selected → workflow failed
+            await self.advance_stage(db, workflow.id, "failed", {
+                "interview_review": "completed",
+                "offer_letter": "no_candidates_selected",
+            })
+            await self._log_agent_action(
+                db, workflow.id,
+                agent_name="Supervisor Agent",
+                action="interview_review_completed",
+                input_summary=f"Job ID: {job_id}",
+                output_summary="All interviewed candidates were rejected. No offer extended. Workflow terminated.",
+                latency_ms=100, token_usage=0,
+            )
+
+    async def _generate_and_send_offer_bg(
+        self, workflow_id: str, job_id: str, candidate_id: str
+    ) -> None:
+        """
+        Background task to:
+        1. Generate a personalized offer letter using Gemini
+        2. Send it to the candidate via email with Accept/Reject links
+        3. Advance workflow to offer_response (waiting for candidate)
+        """
+        from backend.database.session import AsyncSessionLocal
+        from backend.database.models import Candidate, Job, JobDescription
+        from backend.services.notification_service import email_service
+
+        async with AsyncSessionLocal() as db:
+            try:
+                await asyncio.sleep(2)
+
+                # Load candidate and job
+                cand_result = await db.execute(
+                    select(Candidate).where(Candidate.id == candidate_id)
+                )
+                candidate = cand_result.scalar_one_or_none()
+                if not candidate:
+                    logger.error(f"[Offer] Candidate {candidate_id} not found")
+                    return
+
+                job_result = await db.execute(select(Job).where(Job.id == job_id))
+                job = job_result.scalar_one_or_none()
+                job_title = job.title if job else "the position"
+                department = job.department if job else "Engineering"
+                location = job.location if job else "Remote"
+
+                # Generate offer letter content via Gemini
+                offer_content = await self._generate_offer_letter_ai(
+                    candidate_name=candidate.name,
+                    job_title=job_title,
+                    department=department,
+                    location=location,
+                )
+
+                # Build Accept / Reject URLs
+                base_url = f"http://localhost:8000/api/v1/candidates/{candidate.id}"
+                accept_url = f"{base_url}/offer-accept"
+                reject_url = f"{base_url}/offer-reject"
+
+                # Update candidate status
+                candidate.status = "offer_sent"
+                await db.commit()
+
+                # Send offer letter email
+                await email_service.send_offer_letter(
+                    candidate_email=candidate.email,
+                    candidate_name=candidate.name,
+                    job_title=job_title,
+                    offer_letter_content=offer_content,
+                    accept_url=accept_url,
+                    reject_url=reject_url,
+                )
+
+                await self._log_agent_action(
+                    db, workflow_id,
+                    agent_name="Offer Agent",
+                    action="generate_and_send_offer",
+                    input_summary=f"Candidate: {candidate.name} ({candidate.email})",
+                    output_summary=(
+                        f"Offer letter generated via AI and sent to {candidate.email}. "
+                        f"Candidate can Accept or Reject. Waiting for response."
+                    ),
+                    latency_ms=3200, token_usage=900,
+                )
+
+                # Advance to offer_response — wait for candidate action
+                await self.advance_stage(db, workflow_id, "offer_response", {
+                    "offer_letter": "completed",
+                    "offer_response": "waiting_candidate",
+                })
+
+                logger.info(f"Offer letter sent to {candidate.name} ({candidate.email}) for job {job_id}")
+            except Exception as e:
+                logger.error(f"Offer letter generation failed for job {job_id}: {e}")
+                import traceback; traceback.print_exc()
+
+    async def _generate_offer_letter_ai(
+        self,
+        candidate_name: str,
+        job_title: str,
+        department: str,
+        location: str,
+    ) -> str:
+        """Generate a personalized offer letter using Gemini."""
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            from langchain_core.messages import HumanMessage
+
+            llm = ChatGoogleGenerativeAI(
+                model=settings.GEMINI_MODEL,
+                temperature=0.3,
+                google_api_key=settings.GOOGLE_API_KEY,
+            )
+
+            from datetime import datetime, timedelta
+            start_date = (datetime.utcnow() + timedelta(days=15)).strftime("%B %d, %Y")
+
+            prompt = f"""Generate a professional offer letter for the following candidate.
+Keep it formal, warm, and specific. Do NOT use markdown — use plain text only.
+
+Candidate Name: {candidate_name}
+Position: {job_title}
+Department: {department}
+Location: {location}
+Proposed Start Date: {start_date}
+Office Timing: 9:00 AM – 6:00 PM IST (Monday to Friday)
+
+Include these sections:
+1. Opening congratulations
+2. Role & Department details
+3. Compensation (use a realistic placeholder like ₹X LPA or $XX,000/year)
+4. Benefits (health insurance, PTO, learning budget)
+5. Start Date and Office Timing
+6. Reporting structure
+7. Acceptance deadline (7 days from today)
+8. Closing — warm and welcoming tone
+
+Keep it under 400 words. Write it as a complete, ready-to-send letter."""
+
+            response = await llm.ainvoke([HumanMessage(content=prompt)])
+            return response.content.strip()
+        except Exception as e:
+            logger.warning(f"Gemini offer letter generation failed, using template: {e}")
+            from datetime import datetime, timedelta
+            start_date = (datetime.utcnow() + timedelta(days=15)).strftime("%B %d, %Y")
+            return (
+                f"Dear {candidate_name},\n\n"
+                f"We are pleased to offer you the position of {job_title} in our {department} department, "
+                f"based in {location}.\n\n"
+                f"Start Date: {start_date}\n"
+                f"Office Timing: 9:00 AM – 6:00 PM IST (Monday to Friday)\n\n"
+                f"We are confident you will be a valuable addition to our team. "
+                f"Please respond within 7 days to confirm your acceptance.\n\n"
+                f"Warm regards,\nHiring Team"
+            )
+
+    async def handle_offer_response(
+        self, db: AsyncSession, candidate_id: str, accepted: bool
+    ) -> dict:
+        """
+        Called when a candidate accepts or rejects the offer.
+        - accepted=True  → advance to onboarding, send onboarding details email
+        - accepted=False → advance to renegotiation, send renegotiation email
+        """
+        from backend.database.models import Candidate, Job
+        from backend.services.notification_service import email_service
+
+        result = await db.execute(
+            select(Candidate).where(Candidate.id == candidate_id)
+        )
+        candidate = result.scalar_one_or_none()
+        if not candidate:
+            return {"error": "Candidate not found"}
+
+        job_result = await db.execute(select(Job).where(Job.id == candidate.job_id))
+        job = job_result.scalar_one_or_none()
+        job_title = job.title if job else "the position"
+
+        workflow = await self.get_workflow_status(db, candidate.job_id)
+        if not workflow:
+            return {"error": "No workflow found for this job"}
+
+        if accepted:
+            # ── ACCEPTED → ONBOARDING ──
+            candidate.status = "onboarding"
+            await db.commit()
+
+            # Send acceptance confirmation
+            await email_service.send_offer_accepted_confirmation(
+                candidate_email=candidate.email,
+                candidate_name=candidate.name,
+                job_title=job_title,
+            )
+
+            await self._log_agent_action(
+                db, workflow.id,
+                agent_name="Offer Agent",
+                action="offer_accepted",
+                input_summary=f"Candidate {candidate.name} accepted the offer",
+                output_summary=f"{candidate.name} has ACCEPTED the offer for {job_title}. Advancing to onboarding.",
+                latency_ms=200, token_usage=0,
+            )
+
+            # Advance to onboarding
+            await self.advance_stage(db, workflow.id, "onboarding", {
+                "offer_response": "accepted",
+                "onboarding": "running",
+            })
+
+            # Fire onboarding in background
+            asyncio.create_task(
+                self._simulate_onboarding_bg(workflow.id, candidate.job_id)
+            )
+
+            return {
+                "message": f"Offer accepted! Welcome aboard, {candidate.name}. Onboarding initiated.",
+                "status": "onboarding",
+            }
+        else:
+            # ── REJECTED → RENEGOTIATION ──
+            candidate.status = "offer_rejected"
+            await db.commit()
+
+            # Send renegotiation email
+            await email_service.send_renegotiation_email(
+                candidate_email=candidate.email,
+                candidate_name=candidate.name,
+                job_title=job_title,
+            )
+
+            await self._log_agent_action(
+                db, workflow.id,
+                agent_name="Renegotiation Agent",
+                action="offer_rejected",
+                input_summary=f"Candidate {candidate.name} declined the offer",
+                output_summary=(
+                    f"{candidate.name} has DECLINED the offer for {job_title}. "
+                    f"Renegotiation email sent. Recruiter can send a revised offer."
+                ),
+                latency_ms=200, token_usage=0,
+            )
+
+            # Advance to renegotiation
+            await self.advance_stage(db, workflow.id, "renegotiation", {
+                "offer_response": "rejected",
+                "renegotiation": "running",
+            })
+
+            return {
+                "message": f"{candidate.name} declined the offer. Renegotiation initiated.",
+                "status": "renegotiation",
+            }
 
     async def _simulate_onboarding_bg(
         self, workflow_id: str, job_id: str
     ) -> None:
         """
-        Background task to simulate onboarding.
-        Creates onboarding tasks, completes them, and finishes the workflow.
+        Background task to handle onboarding.
+        Creates onboarding tasks, sends detailed onboarding email
+        with start date and office timing, then completes the workflow.
         """
         from backend.database.session import AsyncSessionLocal
         from backend.database.models import Candidate, OnboardingTask
+        from backend.services.notification_service import email_service
         from datetime import datetime, timedelta
 
         async with AsyncSessionLocal() as db:
             try:
-                await asyncio.sleep(5)  # Simulate onboarding setup
+                await asyncio.sleep(3)
 
-                # Get selected candidate
+                # Get the candidate in onboarding status
                 result = await db.execute(
-                    select(Candidate).where(Candidate.job_id == job_id).where(Candidate.status == "selected")
+                    select(Candidate)
+                    .where(Candidate.job_id == job_id)
+                    .where(Candidate.status == "onboarding")
                 )
                 candidate = result.scalars().first()
-                
+
+                # Load job info
+                from backend.database.models import Job
+                job_result = await db.execute(select(Job).where(Job.id == job_id))
+                job = job_result.scalar_one_or_none()
+                job_title = job.title if job else "the position"
+                location = job.location if job else "Remote / Office"
+
                 if candidate:
-                    candidate.status = "onboarding"
-                    
+                    start_date = (datetime.utcnow() + timedelta(days=15)).strftime("%B %d, %Y")
+
                     # Create onboarding tasks
                     tasks = [
                         OnboardingTask(
@@ -805,22 +1153,43 @@ significant impact on our products and services.
                             task_name="IT Setup & Hardware Provisioning",
                             description="Set up email, Slack, and dispatch company laptop.",
                             assigned_to="IT Operations",
-                            status="completed",
+                            status="in_progress",
                             due_date=datetime.utcnow() + timedelta(days=5),
-                            completed_at=datetime.utcnow()
-                        )
+                        ),
+                        OnboardingTask(
+                            candidate_id=candidate.id,
+                            task_name="Background Verification",
+                            description="Complete background check and identity verification.",
+                            assigned_to="HR Operations",
+                            status="pending",
+                            due_date=datetime.utcnow() + timedelta(days=7),
+                        ),
                     ]
                     for t in tasks:
                         db.add(t)
-                    
                     await db.commit()
+
+                    # Send detailed onboarding email with start date and office timing
+                    await email_service.send_onboarding_details(
+                        candidate_email=candidate.email,
+                        candidate_name=candidate.name,
+                        job_title=job_title,
+                        start_date=start_date,
+                        office_timing="9:00 AM – 6:00 PM IST (Monday to Friday)",
+                        reporting_manager="HR Team",
+                        office_location=location,
+                    )
 
                     await self._log_agent_action(
                         db, workflow_id,
                         agent_name="Onboarding Agent",
                         action="initialize_onboarding",
-                        input_summary=f"Candidate: {candidate.name}",
-                        output_summary="Onboarding initialized and IT setup completed. Welcome packet dispatched.",
+                        input_summary=f"Candidate: {candidate.name} ({candidate.email})",
+                        output_summary=(
+                            f"Onboarding initiated for {candidate.name}. "
+                            f"Start date: {start_date}. Office timing: 9:00 AM – 6:00 PM IST. "
+                            f"Onboarding details email sent. IT setup and background verification initiated."
+                        ),
                         latency_ms=2800, token_usage=500,
                     )
                 else:
@@ -828,8 +1197,8 @@ significant impact on our products and services.
                         db, workflow_id,
                         agent_name="Onboarding Agent",
                         action="initialize_onboarding",
-                        input_summary="No selected candidate",
-                        output_summary="No candidate found in onboarding state.",
+                        input_summary="No candidate in onboarding state",
+                        output_summary="No candidate found for onboarding.",
                         latency_ms=100, token_usage=0,
                         status="failure"
                     )
@@ -848,9 +1217,10 @@ significant impact on our products and services.
                     latency_ms=150, token_usage=0,
                 )
 
-                logger.info(f"Onboarding simulation complete for job {job_id}")
+                logger.info(f"Onboarding complete for job {job_id}")
             except Exception as e:
-                logger.error(f"Onboarding simulation failed for job {job_id}: {e}")
+                logger.error(f"Onboarding failed for job {job_id}: {e}")
+                import traceback; traceback.print_exc()
 
 
 # Singleton

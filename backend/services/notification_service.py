@@ -566,6 +566,292 @@ HR Team
             html=html,
         )
 
+    async def send_offer_letter(
+        self,
+        candidate_email: str,
+        candidate_name: str,
+        job_title: str,
+        offer_letter_content: str,
+        accept_url: str,
+        reject_url: str,
+        company_name: str = "our company",
+    ) -> bool:
+        """Send the AI-generated offer letter with Accept / Reject action buttons."""
+        html = f"""
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%);padding:32px 36px;">
+    <div style="color:#93c5fd;font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;">AI Hiring Platform</div>
+    <h1 style="color:#ffffff;font-size:22px;font-weight:700;margin:0;">📄 Official Offer Letter</h1>
+    <div style="color:#bfdbfe;font-size:14px;margin-top:4px;">{job_title}</div>
+  </div>
+
+  <!-- Body -->
+  <div style="padding:32px 36px;">
+    <p style="color:#111827;font-size:16px;margin:0 0 20px;">Dear <strong>{candidate_name}</strong>,</p>
+
+    <p style="color:#374151;line-height:1.7;margin:0 0 24px;">
+      We are delighted to extend a formal offer for the <strong>{job_title}</strong> position
+      at {company_name}. Please review the details below carefully.
+    </p>
+
+    <!-- Offer Letter Content Box -->
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:24px 28px;margin-bottom:28px;white-space:pre-wrap;font-size:14px;line-height:1.8;color:#1e293b;">
+{offer_letter_content}
+    </div>
+
+    <p style="color:#374151;line-height:1.7;margin:0 0 24px;">
+      Please indicate whether you <strong>accept</strong> or <strong>decline</strong> this offer
+      by clicking one of the buttons below. We look forward to hearing from you!
+    </p>
+
+    <!-- Accept / Reject Buttons -->
+    <div style="text-align:center;margin:28px 0;">
+      <a href="{accept_url}" target="_blank" style="display:inline-block;background:#059669;color:#ffffff;font-weight:700;font-size:15px;padding:14px 36px;border-radius:8px;text-decoration:none;box-shadow:0 2px 8px rgba(5,150,105,0.3);margin-right:16px;">
+        ✅ Accept Offer
+      </a>
+      <a href="{reject_url}" target="_blank" style="display:inline-block;background:#dc2626;color:#ffffff;font-weight:700;font-size:15px;padding:14px 36px;border-radius:8px;text-decoration:none;box-shadow:0 2px 8px rgba(220,38,38,0.3);">
+        ❌ Decline Offer
+      </a>
+    </div>
+
+    <p style="color:#6b7280;font-size:12px;text-align:center;margin:12px 0 0;">
+      If the buttons don't work, copy and paste one of these links into your browser:<br/>
+      Accept: <a href="{accept_url}" style="color:#059669;word-break:break-all;">{accept_url}</a><br/>
+      Decline: <a href="{reject_url}" style="color:#dc2626;word-break:break-all;">{reject_url}</a>
+    </p>
+  </div>
+
+  <!-- Footer -->
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 36px;text-align:center;">
+    <p style="color:#9ca3af;font-size:11px;margin:0;">This is an automated offer from the AI Hiring Platform.</p>
+  </div>
+</div>
+"""
+        body = (
+            f"Dear {candidate_name},\n\n"
+            f"We are delighted to extend a formal offer for the {job_title} position.\n\n"
+            f"--- OFFER LETTER ---\n{offer_letter_content}\n---\n\n"
+            f"To ACCEPT this offer, visit: {accept_url}\n"
+            f"To DECLINE this offer, visit: {reject_url}\n\n"
+            "We look forward to hearing from you!\n\n"
+            "Warm regards,\nHiring Team\nAI Hiring Platform"
+        )
+        return await self.send(
+            to=[candidate_email],
+            subject=f"Offer Letter — {job_title} 📄",
+            body=body,
+            html=html,
+        )
+
+    async def send_offer_accepted_confirmation(
+        self,
+        candidate_email: str,
+        candidate_name: str,
+        job_title: str,
+        company_name: str = "our company",
+    ) -> bool:
+        """Confirmation email sent to the candidate after they accept the offer."""
+        html = f"""
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <div style="background:linear-gradient(135deg,#065f46 0%,#047857 100%);padding:32px 36px;">
+    <div style="color:#a7f3d0;font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;">AI Hiring Platform</div>
+    <h1 style="color:#ffffff;font-size:22px;font-weight:700;margin:0;">🎉 Offer Accepted!</h1>
+    <div style="color:#d1fae5;font-size:14px;margin-top:4px;">{job_title}</div>
+  </div>
+  <div style="padding:32px 36px;">
+    <p style="color:#111827;font-size:16px;margin:0 0 20px;">Dear <strong>{candidate_name}</strong>,</p>
+    <p style="color:#374151;line-height:1.7;margin:0 0 24px;">
+      Thank you for accepting the offer for the <strong>{job_title}</strong> position at {company_name}!
+      We are thrilled to welcome you to the team.
+    </p>
+    <div style="background:#ecfdf5;border-left:4px solid #10b981;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:24px;">
+      <div style="font-size:11px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">📋 What Happens Next</div>
+      <p style="color:#065f46;line-height:1.7;margin:0;font-size:14px;">
+        Our HR team will send you a detailed onboarding email shortly with your <strong>start date</strong>,
+        <strong>office timing</strong>, and a complete checklist of things to prepare before your first day.
+      </p>
+    </div>
+    <p style="color:#374151;margin:0;">Welcome aboard!<br/>
+    <strong>Hiring Team</strong><br/>
+    <span style="color:#6b7280;font-size:13px;">AI Hiring Platform</span></p>
+  </div>
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 36px;text-align:center;">
+    <p style="color:#9ca3af;font-size:11px;margin:0;">This is an automated confirmation from the AI Hiring Platform.</p>
+  </div>
+</div>
+"""
+        body = (
+            f"Dear {candidate_name},\n\n"
+            f"Thank you for accepting the offer for the {job_title} position at {company_name}!\n\n"
+            "Our HR team will be in touch shortly with your start date, office timing, "
+            "and a complete onboarding checklist.\n\n"
+            "Welcome aboard!\n\n"
+            "Warm regards,\nHiring Team\nAI Hiring Platform"
+        )
+        return await self.send(
+            to=[candidate_email],
+            subject=f"Offer Accepted — Welcome to the Team! 🎉 ({job_title})",
+            body=body,
+            html=html,
+        )
+
+    async def send_onboarding_details(
+        self,
+        candidate_email: str,
+        candidate_name: str,
+        job_title: str,
+        start_date: str,
+        office_timing: str = "9:00 AM – 6:00 PM IST",
+        reporting_manager: str = "HR Team",
+        office_location: str = "Remote / Office",
+        company_name: str = "our company",
+    ) -> bool:
+        """Detailed onboarding email with start date, office timing, and checklist."""
+        html = f"""
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:640px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <div style="background:linear-gradient(135deg,#1e3a5f 0%,#0369a1 100%);padding:32px 36px;">
+    <div style="color:#7dd3fc;font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;">AI Hiring Platform</div>
+    <h1 style="color:#ffffff;font-size:22px;font-weight:700;margin:0;">🚀 Your Onboarding Details</h1>
+    <div style="color:#bae6fd;font-size:14px;margin-top:4px;">{job_title} at {company_name}</div>
+  </div>
+
+  <div style="padding:32px 36px;">
+    <p style="color:#111827;font-size:16px;margin:0 0 20px;">Dear <strong>{candidate_name}</strong>,</p>
+    <p style="color:#374151;line-height:1.7;margin:0 0 24px;">
+      Congratulations once again! Here are your onboarding details to help you prepare for your first day.
+    </p>
+
+    <!-- Details Box -->
+    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
+      <div style="font-size:11px;font-weight:700;color:#0369a1;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">📋 Onboarding Information</div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;color:#374151;">
+        <tr>
+          <td style="padding:10px 0;color:#6b7280;width:160px;font-weight:600;">📅 Start Date</td>
+          <td style="padding:10px 0;font-weight:700;color:#111827;">{start_date}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 0;color:#6b7280;font-weight:600;">⏰ Office Timing</td>
+          <td style="padding:10px 0;font-weight:600;color:#111827;">{office_timing}</td>
+        </tr>
+        <tr>
+          <td style="padding:10px 0;color:#6b7280;font-weight:600;">📍 Location</td>
+          <td style="padding:10px 0;font-weight:600;color:#111827;">{office_location}</td>
+        </tr>
+        <tr style="background:#f8fafc;">
+          <td style="padding:10px 0;color:#6b7280;font-weight:600;">👤 Reporting To</td>
+          <td style="padding:10px 0;font-weight:600;color:#111827;">{reporting_manager}</td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- Checklist -->
+    <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:20px 24px;margin-bottom:28px;">
+      <div style="font-size:11px;font-weight:700;color:#374151;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:14px;">✅ Pre-Joining Checklist</div>
+      <ul style="margin:0;padding-left:20px;color:#374151;line-height:2;">
+        <li>Sign and return the official offer letter</li>
+        <li>Submit identity documents (Government ID, PAN, etc.)</li>
+        <li>Complete background verification forms</li>
+        <li>Set up your company email and Slack accounts (invites will arrive on Day 1)</li>
+        <li>Prepare your workspace — laptop will be provisioned on your start date</li>
+      </ul>
+    </div>
+
+    <p style="color:#374151;line-height:1.6;margin:0 0 24px;">
+      If you have any questions before your start date, feel free to reach out to your HR contact. We're excited to have you on the team!
+    </p>
+
+    <p style="color:#374151;margin:0;">Welcome aboard!<br/>
+    <strong>HR Team</strong><br/>
+    <span style="color:#6b7280;font-size:13px;">AI Hiring Platform</span></p>
+  </div>
+
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 36px;text-align:center;">
+    <p style="color:#9ca3af;font-size:11px;margin:0;">This is an automated onboarding notification from the AI Hiring Platform.</p>
+  </div>
+</div>
+"""
+        body = (
+            f"Dear {candidate_name},\n\n"
+            f"Congratulations! Here are your onboarding details for the {job_title} role:\n\n"
+            f"  Start Date:      {start_date}\n"
+            f"  Office Timing:   {office_timing}\n"
+            f"  Location:        {office_location}\n"
+            f"  Reporting To:    {reporting_manager}\n\n"
+            "PRE-JOINING CHECKLIST:\n"
+            "  1. Sign and return the official offer letter\n"
+            "  2. Submit identity documents (Government ID, PAN, etc.)\n"
+            "  3. Complete background verification forms\n"
+            "  4. Set up company email and Slack (invites arrive Day 1)\n"
+            "  5. Prepare your workspace — laptop provisioned on start date\n\n"
+            "Welcome aboard!\n\n"
+            "HR Team\nAI Hiring Platform"
+        )
+        return await self.send(
+            to=[candidate_email],
+            subject=f"🚀 Onboarding Details — {job_title} (Start: {start_date})",
+            body=body,
+            html=html,
+        )
+
+    async def send_renegotiation_email(
+        self,
+        candidate_email: str,
+        candidate_name: str,
+        job_title: str,
+        company_name: str = "our company",
+    ) -> bool:
+        """Email sent when a candidate declines the offer, opening renegotiation."""
+        html = f"""
+<div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+  <div style="background:linear-gradient(135deg,#78350f 0%,#b45309 100%);padding:32px 36px;">
+    <div style="color:#fde68a;font-size:12px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;margin-bottom:6px;">AI Hiring Platform</div>
+    <h1 style="color:#ffffff;font-size:22px;font-weight:700;margin:0;">🤝 Offer Renegotiation</h1>
+    <div style="color:#fef3c7;font-size:14px;margin-top:4px;">{job_title}</div>
+  </div>
+  <div style="padding:32px 36px;">
+    <p style="color:#111827;font-size:16px;margin:0 0 20px;">Dear <strong>{candidate_name}</strong>,</p>
+    <p style="color:#374151;line-height:1.7;margin:0 0 24px;">
+      We understand you have declined the initial offer for the <strong>{job_title}</strong> position at {company_name}.
+      We truly value your talent and would love to explore whether we can find terms that work for both parties.
+    </p>
+    <div style="background:#fffbeb;border-left:4px solid #f59e0b;padding:16px 20px;border-radius:0 8px 8px 0;margin-bottom:24px;">
+      <div style="font-size:11px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:6px;">💡 Next Steps</div>
+      <p style="color:#78350f;line-height:1.7;margin:0;font-size:14px;">
+        A member of our hiring team will reach out to you shortly to discuss your concerns and
+        explore revised offer terms including compensation, benefits, role scope, or flexibility.
+        Please feel free to share what would make this a great fit for you.
+      </p>
+    </div>
+    <p style="color:#374151;line-height:1.6;margin:0 0 24px;">
+      We remain very interested in having you join our team and are happy to work together to find a mutually beneficial arrangement.
+    </p>
+    <p style="color:#374151;margin:0;">Best regards,<br/>
+    <strong>Hiring Team</strong><br/>
+    <span style="color:#6b7280;font-size:13px;">AI Hiring Platform</span></p>
+  </div>
+  <div style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:16px 36px;text-align:center;">
+    <p style="color:#9ca3af;font-size:11px;margin:0;">This is an automated message from the AI Hiring Platform.</p>
+  </div>
+</div>
+"""
+        body = (
+            f"Dear {candidate_name},\n\n"
+            f"We understand you have declined the initial offer for the {job_title} position.\n\n"
+            "We value your talent and would like to explore revised terms.\n"
+            "A member of our hiring team will reach out shortly to discuss your concerns — "
+            "compensation, benefits, role scope, or flexibility.\n\n"
+            "We remain very interested in having you join our team.\n\n"
+            "Best regards,\nHiring Team\nAI Hiring Platform"
+        )
+        return await self.send(
+            to=[candidate_email],
+            subject=f"Let's Talk — Offer Discussion for {job_title} 🤝",
+            body=body,
+            html=html,
+        )
+
 
 # Singleton
 email_service = EmailService()
+
