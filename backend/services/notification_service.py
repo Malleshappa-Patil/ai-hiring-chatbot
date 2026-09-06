@@ -41,8 +41,7 @@ class EmailService:
                 )
                 self._mail = FastMail(config)
             except ImportError:
-                logger.warning("fastapi-mail not installed. Falling back to mock mode.")
-                self.mock = True
+                logger.info("fastapi-mail not installed. Will use smtplib for sending emails.")
         return self._mail
 
     async def send(

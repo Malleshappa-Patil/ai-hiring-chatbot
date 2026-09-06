@@ -449,16 +449,8 @@ async def select_candidate(
 
     selection_note = payload.selection_note if payload else None
 
-    # Send congratulations & Google Meet link email
-    email_sent = await email_service.send_selection_email(
-        candidate_email=candidate.email,
-        candidate_name=candidate.name,
-        job_title=job_title,
-        meeting_link=meeting_link,
-        selection_note=selection_note,
-    )
-
-    # Update workflow state & mark candidate_selected node completed
+    # Update workflow state to offer_letter and trigger AI offer letter generation
+    email_sent = False
     try:
         wf_res = await db.execute(select(WorkflowState).where(WorkflowState.job_id == candidate.job_id))
         wf = wf_res.scalar_one_or_none()
@@ -467,30 +459,34 @@ async def select_candidate(
             statuses["human_review"] = "completed"
             statuses["human_approval"] = "completed"
             statuses["interviewing"] = "completed"
-            statuses["candidate_selected"] = "completed"
+            statuses["interview_review"] = "completed"
+            statuses["offer_letter"] = "running"
             wf.agent_statuses = statuses
-            wf.current_stage = "candidate_selected"
-
-            email_log_str = "Selection notification sent to candidate email." if email_sent else "WARNING: Email delivery failed via SMTP (Check Gmail App Password)."
+            wf.current_stage = "offer_letter"
 
             await workflow_service._log_agent_action(
                 db, wf.id,
-                agent_name="Offer Agent",
-                action="send_offer_letter",
-                input_summary=f"Select Candidate: {candidate.name} ({candidate.email})",
-                output_summary=f"Candidate SELECTED! Google Meet link attached ({meeting_link}). {email_log_str}",
-                latency_ms=300, token_usage=120
+                agent_name="Supervisor Agent",
+                action="candidate_selected_for_offer",
+                input_summary=f"Selected Candidate: {candidate.name} ({candidate.email})",
+                output_summary=f"Candidate selected for offer. Advancing to Node 15 (Offer Letter Generation).",
+                latency_ms=250, token_usage=80
             )
             await db.commit()
+
+            # Fire the AI Offer Letter generation & email dispatch background task
+            import asyncio
+            asyncio.create_task(
+                workflow_service._generate_and_send_offer_bg(wf.id, candidate.job_id, candidate.id)
+            )
+            email_sent = True
     except Exception as wf_err:
-        logger.warning(f"Could not update workflow state on candidate select: {wf_err}")
+        logger.warning(f"Could not trigger offer letter workflow: {wf_err}")
+        import traceback; traceback.print_exc()
 
-    # Check if all interviewed candidates are reviewed → trigger offer letter
-    await workflow_service.check_interview_review_status(db, candidate.job_id)
-
-    logger.info(f"Candidate {candidate.name} selected by {current_user.email} (email_sent={email_sent})")
+    logger.info(f"Candidate {candidate.name} selected by {current_user.email}, offer letter workflow triggered")
     return {
-        "message":      f"{candidate.name} has been SELECTED." + (" Selection email sent." if email_sent else " (WARNING: Email delivery failed via SMTP)."),
+        "message":      f"{candidate.name} has been selected! AI Offer Agent is generating and emailing the offer letter.",
         "candidate_id": candidate_id,
         "status":       "selected",
         "meeting_link": meeting_link,
@@ -498,7 +494,42 @@ async def select_candidate(
     }
 
 
+# -- Resend Offer Letter -------------------------------------------------------
+@router.post("/{candidate_id}/resend-offer", status_code=200)
+async def resend_offer_letter(
+    candidate_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resend or re-trigger the AI offer letter email to the candidate."""
+    from backend.services.workflow_service import workflow_service
+    from backend.database.models import WorkflowState
+    import asyncio
+
+    result = await db.execute(
+        select(Candidate).where(Candidate.id == candidate_id)
+    )
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    wf_res = await db.execute(select(WorkflowState).where(WorkflowState.job_id == candidate.job_id))
+    wf = wf_res.scalar_one_or_none()
+    wf_id = wf.id if wf else str(candidate.job_id)
+
+    asyncio.create_task(
+        workflow_service._generate_and_send_offer_bg(wf_id, candidate.job_id, candidate.id)
+    )
+    return {
+        "message": f"Offer letter email dispatch initiated for {candidate.name} ({candidate.email})",
+        "candidate_id": candidate.id,
+        "email": candidate.email,
+        "success": True,
+    }
+
+
 # -- Offer Response: Accept / Reject (called by candidate via email link) ------
+@router.get("/{candidate_id}/offer-accept")
 @router.post("/{candidate_id}/offer-accept", status_code=200)
 async def accept_offer(
     candidate_id: str,
@@ -508,6 +539,7 @@ async def accept_offer(
     Public endpoint — no auth required. Called when candidate clicks
     'Accept Offer' in the offer letter email.
     """
+    from fastapi.responses import HTMLResponse
     from backend.services.workflow_service import workflow_service
 
     result = await workflow_service.handle_offer_response(
@@ -515,9 +547,35 @@ async def accept_offer(
     )
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
-    return result
+
+    html_content = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Offer Accepted — Congratulations!</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #181818; color: #EBDCC4; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .card { background: #1E1A18; border: 1px solid #66473B; border-radius: 12px; padding: 48px; max-width: 520px; text-align: center; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
+        .badge { display: inline-block; background: rgba(74,222,128,0.15); color: #4ade80; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; padding: 6px 14px; border-radius: 20px; margin-bottom: 16px; border: 1px solid rgba(74,222,128,0.3); }
+        h1 { color: #ffffff; font-size: 24px; margin: 0 0 12px; }
+        p { color: #B6A596; line-height: 1.6; font-size: 15px; margin: 0 0 20px; }
+        .footer { font-size: 12px; color: #7A6A5E; margin-top: 24px; border-top: 1px solid #35211A; padding-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge">Offer Accepted</div>
+        <h1>🎉 Welcome to the Team!</h1>
+        <p>Your acceptance has been confirmed. The hiring team has been notified and your onboarding initiation process is underway.</p>
+        <p>Please check your inbox for onboarding instructions, your start date schedule, and next steps.</p>
+        <div class="footer">AI Hiring Platform — Official Notification</div>
+    </div>
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
 
 
+@router.get("/{candidate_id}/offer-reject")
 @router.post("/{candidate_id}/offer-reject", status_code=200)
 async def reject_offer(
     candidate_id: str,
@@ -527,6 +585,7 @@ async def reject_offer(
     Public endpoint — no auth required. Called when candidate clicks
     'Decline Offer' in the offer letter email.
     """
+    from fastapi.responses import HTMLResponse
     from backend.services.workflow_service import workflow_service
 
     result = await workflow_service.handle_offer_response(
@@ -534,7 +593,31 @@ async def reject_offer(
     )
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
-    return result
+
+    html_content = """<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Offer Response</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #181818; color: #EBDCC4; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .card { background: #1E1A18; border: 1px solid #66473B; border-radius: 12px; padding: 48px; max-width: 520px; text-align: center; box-shadow: 0 16px 40px rgba(0,0,0,0.6); }
+        .badge { display: inline-block; background: rgba(251,191,36,0.15); color: #fbbf24; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; padding: 6px 14px; border-radius: 20px; margin-bottom: 16px; border: 1px solid rgba(251,191,36,0.3); }
+        h1 { color: #ffffff; font-size: 24px; margin: 0 0 12px; }
+        p { color: #B6A596; line-height: 1.6; font-size: 15px; margin: 0 0 20px; }
+        .footer { font-size: 12px; color: #7A6A5E; margin-top: 24px; border-top: 1px solid #35211A; padding-top: 16px; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="badge">Offer Response Recorded</div>
+        <h1>Response Recorded</h1>
+        <p>Thank you for letting us know your decision. Our recruitment team has been notified regarding your response.</p>
+        <div class="footer">AI Hiring Platform — Official Notification</div>
+    </div>
+</body>
+</html>"""
+    return HTMLResponse(content=html_content)
 
 
 # -- Post-Interview / Review: Final Reject Candidate ---------------------------

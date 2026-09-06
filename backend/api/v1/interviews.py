@@ -108,8 +108,8 @@ async def schedule_interview(
             statuses = dict(wf.agent_statuses or {})
             statuses["human_review"] = "completed"
             statuses["human_approval"] = "completed"
-            statuses["interviewing"] = "completed"
-            statuses["interview"] = "completed"
+            statuses["interviewing"] = "running"
+            statuses["interview"] = "running"
             wf.agent_statuses = statuses
             wf.current_stage = "interviewing"
 
@@ -137,7 +137,7 @@ async def schedule_interview(
     await db.refresh(interview)
 
     # Send notification email
-    await email_service.send_interview_invitation(
+    email_sent = await email_service.send_interview_invitation(
         candidate_email=candidate.email,
         candidate_name=candidate.name,
         job_title=job_title,
@@ -146,8 +146,106 @@ async def schedule_interview(
         meeting_link=interview.meeting_link,
     )
 
-    logger.info(f"Interview scheduled for candidate {candidate.email} on {scheduled_at}")
+    logger.info(f"Interview scheduled for candidate {candidate.email} on {scheduled_at} (email_sent={email_sent})")
+
+    # Background task: simulate interview session completing, mark interviewed, advance to interview_review
+    if wf:
+        async def _complete_scheduled_interview_bg(wf_id: str, j_id: str, cand_id: str, iv_id: str):
+            import asyncio
+            from backend.database.session import AsyncSessionLocal
+            from backend.services.workflow_service import workflow_service
+            await asyncio.sleep(6)
+            async with AsyncSessionLocal() as bg_db:
+                try:
+                    c_res = await bg_db.execute(select(Candidate).where(Candidate.id == cand_id))
+                    c = c_res.scalar_one_or_none()
+                    if c:
+                        c.status = "interviewed"
+                    iv_res = await bg_db.execute(select(Interview).where(Interview.id == iv_id))
+                    iv = iv_res.scalar_one_or_none()
+                    if iv:
+                        iv.status = "completed"
+                    await bg_db.commit()
+
+                    await workflow_service._log_agent_action(
+                        bg_db, wf_id,
+                        agent_name="Interview Agent",
+                        action="complete_interviews",
+                        input_summary=f"Candidate: {c.name if c else cand_id}",
+                        output_summary="Interview conducted and completed. Advancing to Interview Review stage.",
+                        latency_ms=800, token_usage=150,
+                    )
+                    await workflow_service.advance_stage(bg_db, wf_id, "interview_review", {
+                        "interview": "completed",
+                        "interviewing": "completed",
+                        "interview_review": "waiting_approval",
+                    })
+                except Exception as bg_err:
+                    logger.warning(f"Background interview completion failed: {bg_err}")
+
+        import asyncio
+        asyncio.create_task(_complete_scheduled_interview_bg(wf.id, payload.job_id, candidate.id, interview.id))
+
     return interview
+
+
+# ── Resend Interview Invitation ───────────────────────────────────
+@router.post("/{candidate_id}/resend", response_model=dict)
+async def resend_interview_invitation(
+    candidate_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Resend the interview Google Meet invitation email to the candidate."""
+    from datetime import timedelta
+    from backend.services.google_meet_service import create_meeting
+
+    result = await db.execute(select(Candidate).where(Candidate.id == candidate_id))
+    candidate = result.scalar_one_or_none()
+    if not candidate:
+        raise HTTPException(status_code=404, detail="Candidate not found")
+
+    from backend.database.models import Job
+    job_result = await db.execute(select(Job).where(Job.id == candidate.job_id))
+    job = job_result.scalar_one_or_none()
+    job_title = job.title if job else "the position"
+
+    iv_res = await db.execute(
+        select(Interview)
+        .where(Interview.candidate_id == candidate.id)
+        .order_by(Interview.created_at.desc())
+    )
+    interview = iv_res.scalar_one_or_none()
+    meeting_link = interview.meeting_link if interview else None
+    scheduled_at = interview.scheduled_at if (interview and interview.scheduled_at) else datetime.utcnow() + timedelta(days=1)
+    
+    if not meeting_link:
+        meeting_link = await create_meeting(
+            candidate_name=candidate.name,
+            job_title=job_title,
+            scheduled_at=scheduled_at,
+        )
+        if interview:
+            interview.meeting_link = meeting_link
+            await db.commit()
+
+    scheduled_at_str = scheduled_at.strftime("%B %d, %Y at %I:%M %p UTC")
+    interviewer_name = interview.interviewer if interview and interview.interviewer else "Hiring Team"
+
+    email_sent = await email_service.send_interview_invitation(
+        candidate_email=candidate.email,
+        candidate_name=candidate.name,
+        job_title=job_title,
+        scheduled_at=scheduled_at_str,
+        interviewer=interviewer_name,
+        meeting_link=meeting_link,
+    )
+    return {
+        "success": email_sent,
+        "email": candidate.email,
+        "meeting_link": meeting_link,
+        "message": f"Interview invitation email {'sent successfully' if email_sent else 'delivery attempted'} to {candidate.email}",
+    }
 
 
 @router.patch("/{interview_id}/status", response_model=InterviewResponse)

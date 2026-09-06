@@ -593,12 +593,12 @@ significant impact on our products and services.
         
         if remaining_count == 0:
             workflow = await self.get_workflow_status(db, job_id)
-            if workflow and workflow.current_stage == "human_review":
+            if workflow and workflow.current_stage in ["human_review", "screening"]:
                 # Get count of shortlisted candidates
                 shortlisted = await db.execute(
                     select(func.count(Candidate.id))
                     .where(Candidate.job_id == job_id)
-                    .where(Candidate.status == "shortlisted")
+                    .where(Candidate.status.in_(["shortlisted", "interview_scheduled"]))
                 )
                 shortlisted_count = shortlisted.scalar() or 0
                 
@@ -639,6 +639,36 @@ significant impact on our products and services.
                         status="success"
                     )
 
+    async def trigger_interview_stage(self, db: AsyncSession, job_id: str) -> bool:
+        """Manually or programmatically trigger interview stage for shortlisted candidates."""
+        from backend.database.models import Candidate
+        workflow = await self.get_workflow_status(db, job_id)
+        if not workflow:
+            return False
+
+        shortlisted = await db.execute(
+            select(func.count(Candidate.id))
+            .where(Candidate.job_id == job_id)
+            .where(Candidate.status.in_(["shortlisted", "interview_scheduled"]))
+        )
+        count = shortlisted.scalar() or 0
+        if count == 0:
+            return False
+
+        await self.advance_stage(
+            db, workflow.id, "interviewing",
+            {"human_review": "completed", "interview": "running"}
+        )
+        await self._log_agent_action(
+            db, workflow.id,
+            agent_name="Supervisor Agent",
+            action="interview_stage_triggered",
+            input_summary=f"Job ID: {job_id}",
+            output_summary=f"{count} candidate(s) ready for interviews. Advancing to Interview Coordination stage.",
+            latency_ms=100, token_usage=0
+        )
+        await self.start_interview_simulation(db, job_id, workflow.id)
+        return True
 
     async def start_interview_simulation(
         self, db: AsyncSession, job_id: str, workflow_id: str
@@ -705,30 +735,46 @@ significant impact on our products and services.
                 for i, candidate in enumerate(shortlisted):
                     scheduled_time = datetime.utcnow() + timedelta(days=1, hours=i * 2)
 
-                    # Generate a real Google Meet link
-                    meeting_link = await create_meeting(
-                        candidate_name=candidate.name,
-                        job_title=job_title,
-                        scheduled_at=scheduled_time,
-                        duration_minutes=45,
-                        interviewer=interviewers[i % len(interviewers)],
+                    # Check if an interview record already exists
+                    existing_iv_res = await db.execute(
+                        select(Interview)
+                        .where(Interview.candidate_id == candidate.id)
+                        .where(Interview.job_id == job_id)
                     )
+                    existing_iv = existing_iv_res.scalar_one_or_none()
+
+                    if existing_iv and existing_iv.meeting_link:
+                        meeting_link = existing_iv.meeting_link
+                    else:
+                        meeting_link = await create_meeting(
+                            candidate_name=candidate.name,
+                            job_title=job_title,
+                            scheduled_at=scheduled_time,
+                            duration_minutes=45,
+                            interviewer=interviewers[i % len(interviewers)],
+                        )
 
                     candidate.status = "interview_scheduled"
-                    interview = Interview(
-                        candidate_id=candidate.id,
-                        job_id=job_id,
-                        scheduled_at=scheduled_time,
-                        duration_minutes=45,
-                        interviewer=interviewers[i % len(interviewers)],
-                        interview_type=interview_types[i % len(interview_types)],
-                        status="scheduled",
-                        meeting_link=meeting_link,
-                    )
-                    db.add(interview)
+
+                    if existing_iv:
+                        existing_iv.meeting_link = meeting_link
+                        existing_iv.scheduled_at = scheduled_time
+                        existing_iv.status = "scheduled"
+                    else:
+                        interview = Interview(
+                            candidate_id=candidate.id,
+                            job_id=job_id,
+                            scheduled_at=scheduled_time,
+                            duration_minutes=45,
+                            interviewer=interviewers[i % len(interviewers)],
+                            interview_type=interview_types[i % len(interview_types)],
+                            status="scheduled",
+                            meeting_link=meeting_link,
+                        )
+                        db.add(interview)
 
                     # Send interview invitation email to the candidate
-                    await email_service.send_interview_invitation(
+                    email_sent = await email_service.send_interview_invitation(
                         candidate_email=candidate.email,
                         candidate_name=candidate.name,
                         job_title=job_title,
@@ -738,7 +784,7 @@ significant impact on our products and services.
                     )
                     logger.info(
                         f"[Interview] Invitation sent to {candidate.name} ({candidate.email}) "
-                        f"at {scheduled_time.strftime('%Y-%m-%d %H:%M')} — {meeting_link}"
+                        f"success={email_sent} at {scheduled_time.strftime('%Y-%m-%d %H:%M')} — {meeting_link}"
                     )
 
                 await db.commit()
@@ -819,14 +865,14 @@ significant impact on our products and services.
             return
 
         workflow = await self.get_workflow_status(db, job_id)
-        if not workflow or workflow.current_stage != "interview_review":
+        if not workflow or workflow.current_stage not in ("interview_review", "candidate_selected"):
             return
 
         # Check if any candidate was selected
         selected = await db.execute(
             select(Candidate)
             .where(Candidate.job_id == job_id)
-            .where(Candidate.status == "selected")
+            .where(Candidate.status.in_(["selected", "offer_sent"]))
         )
         selected_candidate = selected.scalars().first()
 
@@ -913,7 +959,7 @@ significant impact on our products and services.
                 await db.commit()
 
                 # Send offer letter email
-                await email_service.send_offer_letter(
+                email_sent = await email_service.send_offer_letter(
                     candidate_email=candidate.email,
                     candidate_name=candidate.name,
                     job_title=job_title,
@@ -921,6 +967,7 @@ significant impact on our products and services.
                     accept_url=accept_url,
                     reject_url=reject_url,
                 )
+                logger.info(f"Offer letter email dispatched to {candidate.name} ({candidate.email}) result={email_sent}")
 
                 await self._log_agent_action(
                     db, workflow_id,
@@ -928,8 +975,8 @@ significant impact on our products and services.
                     action="generate_and_send_offer",
                     input_summary=f"Candidate: {candidate.name} ({candidate.email})",
                     output_summary=(
-                        f"Offer letter generated via AI and sent to {candidate.email}. "
-                        f"Candidate can Accept or Reject. Waiting for response."
+                        f"Offer letter generated via AI and dispatched to {candidate.email}. "
+                        f"Candidate can Accept or Reject via email links. Status: {'Delivered' if email_sent else 'Delivery Attempted'}."
                     ),
                     latency_ms=3200, token_usage=900,
                 )
@@ -1137,7 +1184,7 @@ Keep it under 400 words. Write it as a complete, ready-to-send letter."""
                 if candidate:
                     start_date = (datetime.utcnow() + timedelta(days=15)).strftime("%B %d, %Y")
 
-                    # Create onboarding tasks
+                    # Create onboarding tasks (Only signing offer letter, marking onboarding complete)
                     tasks = [
                         OnboardingTask(
                             candidate_id=candidate.id,
@@ -1147,22 +1194,6 @@ Keep it under 400 words. Write it as a complete, ready-to-send letter."""
                             status="completed",
                             due_date=datetime.utcnow() + timedelta(days=2),
                             completed_at=datetime.utcnow()
-                        ),
-                        OnboardingTask(
-                            candidate_id=candidate.id,
-                            task_name="IT Setup & Hardware Provisioning",
-                            description="Set up email, Slack, and dispatch company laptop.",
-                            assigned_to="IT Operations",
-                            status="in_progress",
-                            due_date=datetime.utcnow() + timedelta(days=5),
-                        ),
-                        OnboardingTask(
-                            candidate_id=candidate.id,
-                            task_name="Background Verification",
-                            description="Complete background check and identity verification.",
-                            assigned_to="HR Operations",
-                            status="pending",
-                            due_date=datetime.utcnow() + timedelta(days=7),
                         ),
                     ]
                     for t in tasks:

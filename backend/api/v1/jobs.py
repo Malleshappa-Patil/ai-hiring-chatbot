@@ -524,3 +524,25 @@ async def get_seat_status(
         "is_full":   filled >= seat_limit or job.status == "not_hiring",
         "job_status": job.status,
     }
+
+
+# ── Trigger Interview Stage (Agent) ───────────────────────────────
+@router.post("/{job_id}/start-interviews")
+async def start_job_interviews(
+    job_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Trigger the Interview Agent to coordinate interviews, generate Google Meet links,
+    and dispatch email invitations to all shortlisted candidates.
+    """
+    success = await workflow_service.trigger_interview_stage(db, job_id)
+    if not success:
+        raise HTTPException(
+            status_code=400,
+            detail="No shortlisted candidates found for this job, or workflow is not ready."
+        )
+    return {
+        "message": "Interview stage started. Agent is generating Google Meet links and sending invitations."
+    }
