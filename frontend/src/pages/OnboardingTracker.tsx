@@ -53,8 +53,12 @@ export default function OnboardingTracker() {
   const statusTextColor = (status: string) =>
     status === 'completed' ? C.green : status === 'in_progress' ? C.accent : C.muted
 
-  const completedCount = tasks?.filter(t => t.status === 'completed').length ?? 0
-  const totalCount = tasks?.length ?? 0
+  const filteredTasks = (tasks || []).filter(
+    t => t.task_name !== 'IT Setup & Hardware Provisioning' && t.task_name !== 'Background Verification'
+  )
+
+  const completedCount = filteredTasks.filter(t => t.status === 'completed').length
+  const totalCount = filteredTasks.length
   const selectedCandidate = candidates?.items.find(c => c.id === selectedCandidateId)
 
   return (
@@ -134,6 +138,10 @@ export default function OnboardingTracker() {
                     <div style={{ fontSize: '11px', color: C.faint, marginTop: '1px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {c.email}
                     </div>
+                    <div style={{ fontSize: '11px', color: C.green, marginTop: '3px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      <CheckCircle2 size={11} color={C.green} />
+                      <span>Onboarding complete</span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -182,7 +190,7 @@ export default function OnboardingTracker() {
               </div>
 
               {/* Progress bar */}
-              {tasks && (
+              {filteredTasks.length > 0 && (
                 <div style={{ marginBottom: '20px', background: C.panelAlt, padding: '14px', borderRadius: '4px', border: `1px solid ${C.divider}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
                     <span style={{ fontSize: '10px', fontWeight: 700, color: C.faint, letterSpacing: '0.12em', textTransform: 'uppercase' }}>
@@ -196,7 +204,7 @@ export default function OnboardingTracker() {
                     <div style={{
                       width: totalCount ? `${(completedCount / totalCount) * 100}%` : '0%',
                       height: '100%', borderRadius: '2px',
-                      background: C.accent, transition: 'width 0.5s ease',
+                      background: C.green, transition: 'width 0.5s ease',
                     }} />
                   </div>
                 </div>
@@ -204,22 +212,38 @@ export default function OnboardingTracker() {
 
               {isLoadingTasks ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {[1, 2, 3, 4].map(i => <div key={i} className="skeleton" style={{ height: '64px' }} />)}
+                  {[1, 2].map(i => <div key={i} className="skeleton" style={{ height: '64px' }} />)}
                 </div>
-              ) : !tasks?.length ? (
-                <div style={{ textAlign: 'center', padding: '40px', color: C.faint, fontSize: '13px' }}>
-                  No onboarding tasks generated yet.
+              ) : !filteredTasks?.length ? (
+                <div style={{
+                  padding: '24px',
+                  background: C.greenBg,
+                  border: `1px solid ${C.greenBdr}`,
+                  borderRadius: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '12px',
+                }}>
+                  <CheckCircle2 size={22} color={C.green} style={{ flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontSize: '14px', fontWeight: 600, color: C.green }}>
+                      Onboarding is complete for this candidate.
+                    </div>
+                    <div style={{ fontSize: '11px', color: C.muted, marginTop: '3px' }}>
+                      Offer letter signed and onboarding formalities finalized.
+                    </div>
+                  </div>
                 </div>
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                  {tasks.map(task => (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {filteredTasks.map(task => (
                     <div key={task.id} style={{
                       padding: '12px 14px',
                       background: task.status === 'completed' ? C.panelAlt : C.panelAlt,
                       border: `1px solid ${task.status === 'completed' ? C.divider : C.divider}`,
                       borderRadius: '4px',
                       display: 'flex', alignItems: 'center', gap: '12px',
-                      opacity: task.status === 'completed' ? 0.65 : 1,
+                      opacity: task.status === 'completed' ? 0.75 : 1,
                       transition: 'all 0.15s',
                     }}>
                       {statusIcon(task.status)}
@@ -252,6 +276,28 @@ export default function OnboardingTracker() {
                       </select>
                     </div>
                   ))}
+
+                  {/* Completion message under respective candidate section */}
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '16px 18px',
+                    background: C.greenBg,
+                    border: `1px solid ${C.greenBdr}`,
+                    borderRadius: '4px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                  }}>
+                    <CheckCircle2 size={20} color={C.green} style={{ flexShrink: 0 }} />
+                    <div>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: C.green }}>
+                        Onboarding is complete for this candidate.
+                      </div>
+                      <div style={{ fontSize: '11px', color: C.muted, marginTop: '2px' }}>
+                        Offer letter has been accepted and candidate onboarding process has finished.
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

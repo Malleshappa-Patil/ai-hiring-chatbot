@@ -53,7 +53,8 @@ const jobStatusColor: Record<JobStatus, string> = {
 const candidateStatusLabel: Record<string, string> = {
   applied: 'Applied', screening: 'Screening', shortlisted: 'Shortlisted',
   interview_scheduled: 'Interview Scheduled', interviewed: 'Interviewed',
-  selected: 'Selected', onboarding: 'Onboarding', rejected: 'Rejected',
+  selected: 'Selected', offer_sent: 'Offer Sent', offer_rejected: 'Offer Declined',
+  onboarding: 'Onboarding', rejected: 'Rejected',
 }
 
 function StatusBadge({ status }: { status: string }) {

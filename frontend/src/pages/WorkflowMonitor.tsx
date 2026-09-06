@@ -5,7 +5,8 @@ import {
   GitBranch, Activity, CheckCircle2, XCircle, AlertCircle, Loader2,
   Briefcase, RefreshCw, ClipboardList, FileText, UserCheck, Send,
   Eye, Search, Users, Video, UserPlus, AlertTriangle, ChevronRight,
-  X, Zap, Brain, Bot, RotateCcw, ArrowRightLeft, Circle, ChevronDown, User
+  X, Zap, Brain, Bot, RotateCcw, ArrowRightLeft, Circle, ChevronDown, User,
+  Mail, ExternalLink
 } from 'lucide-react'
 import type { JobStatus, AgentLog } from '@/types'
 import toast from 'react-hot-toast'
@@ -122,32 +123,44 @@ const NODES: NodeDef[] = [
   {
     id: 'interviewing', title: 'Interview Coordination', shortTitle: 'Interviews',
     agentName: 'Interview Agent', agentType: 'ai', icon: Video, col: 1, row: 2,
-    description: 'Schedules technical & HR interviews, runs evaluation simulations.',
-    subSteps: ['Generate meeting schedules', 'Run evaluation simulations', 'Compile feedback & scores'],
+    description: 'Schedules technical & HR interviews, sends Google Meet invitations to candidates.',
+    subSteps: ['Schedule interview slots', 'Send Google Meet invitations', 'Mark interviews as completed'],
+  },
+  {
+    id: 'interview_review', title: 'Interview Review', shortTitle: 'Interview Review',
+    agentName: 'Human Recruiter', agentType: 'human', icon: Users, col: 0, row: 2,
+    description: 'Recruiter reviews interview results and selects the best candidate for offer letter.',
+    subSteps: ['Review interview feedback', 'Select candidate for offer', 'Reject remaining candidates'],
   },
 
-  /* Phase 4: Final Selection, Offers & Onboarding (Row 3) */
+  /* Phase 4: Offer Letter, Response & Onboarding (Row 3) */
   {
-    id: 'candidate_selected', title: 'Offer Letter Generation', shortTitle: 'Send Offer',
-    agentName: 'Offer Agent', agentType: 'ai', icon: FileText, col: 1, row: 3,
-    description: 'Generates personalised offer letter & sends to candidate.',
-    subSteps: ['Compose offer letter with LLM', 'Attach comp & benefits', 'Send via email service'],
+    id: 'offer_letter', title: 'Offer Letter Generation', shortTitle: 'Send Offer',
+    agentName: 'Offer Agent', agentType: 'ai', icon: FileText, col: 3, row: 3,
+    description: 'AI generates personalised offer letter & sends to candidate with Accept/Reject options.',
+    subSteps: ['Generate offer letter via AI', 'Send email with Accept/Reject buttons', 'Wait for candidate response'],
   },
   {
-    id: 'offer_accepted', title: 'Onboarding Initiation', shortTitle: 'Onboarding',
-    agentName: 'Onboarding Agent', agentType: 'ai', icon: UserPlus, col: 0, row: 3,
-    description: 'Prepares welcome package, employee record, IT accounts, and welcome kit.',
-    subSteps: ['Collect verification docs', 'Create employee record', 'Trigger IT asset allocation'],
+    id: 'offer_response', title: 'Candidate Response', shortTitle: 'Offer Response',
+    agentName: 'Offer Agent', agentType: 'ai', icon: FileText, col: 2, row: 3,
+    description: 'Waiting for candidate to accept or decline the offer letter.',
+    subSteps: ['Candidate reviews offer', 'Accept → Onboarding', 'Reject → Renegotiation'],
+  },
+  {
+    id: 'onboarding', title: 'Onboarding Initiation', shortTitle: 'Onboarding',
+    agentName: 'Onboarding Agent', agentType: 'ai', icon: UserPlus, col: 1, row: 3,
+    description: 'Sends onboarding details (start date, office timing) and prepares employee record.',
+    subSteps: ['Send onboarding details email', 'Create employee record', 'Trigger IT asset allocation'],
   },
   {
     id: 'renegotiation', title: 'Offer Renegotiation', shortTitle: 'Renegotiation',
-    agentName: 'Renegotiation Agent', agentType: 'ai', icon: ArrowRightLeft, col: 2, row: 3,
-    description: 'Negotiates salary & benefits with candidate on counter-offer.',
-    subSteps: ['Initiate negotiation', 'Loop until decision', 'Route to Onboarding or Close'],
+    agentName: 'Renegotiation Agent', agentType: 'ai', icon: ArrowRightLeft, col: 0, row: 3,
+    description: 'Candidate declined — sends renegotiation email to explore revised terms.',
+    subSteps: ['Send renegotiation email', 'Recruiter revises offer', 'Route to Onboarding or Close'],
   },
   {
     id: 'rejection_email', title: 'Rejection Notification', shortTitle: 'Rejection Email',
-    agentName: 'Comms Agent', agentType: 'ai', icon: XCircle, col: 3, row: 3,
+    agentName: 'Comms Agent', agentType: 'ai', icon: XCircle, col: 3, row: 4,
     description: 'Sends personalised regret email to non-selected candidates.',
     subSteps: ['Generate regret email', 'Send via email service', 'Update candidate status'],
   },
@@ -176,22 +189,24 @@ const EDGES: EdgeDef[] = [
   // Phase 2 -> Phase 3 Pipeline
   { from: 'screening',        to: 'human_review',       type: 'forward' },
   { from: 'human_review',     to: 'interviewing',       type: 'forward' },
+  { from: 'interviewing',     to: 'interview_review',   type: 'forward' },
 
   // Phase 3 -> Phase 4 Decisions
-  { from: 'interviewing',     to: 'candidate_selected', type: 'branch_yes',   label: 'Selected ✓' },
-  { from: 'interviewing',     to: 'rejection_email',    type: 'branch_no',    label: 'Rejected ✗' },
-  { from: 'candidate_selected', to: 'offer_accepted',  type: 'branch_yes',   label: 'Accepted ✓' },
-  { from: 'candidate_selected', to: 'renegotiation',   type: 'branch_no',    label: 'Counter ✗' },
-  { from: 'renegotiation',    to: 'offer_accepted',     type: 'branch_yes',   label: 'Accepted ✓' },
-  { from: 'renegotiation',    to: 'candidate_selected', type: 'feedback',     label: 'Loop back' },
+  { from: 'interview_review', to: 'offer_letter',       type: 'branch_yes',   label: 'Selected ✓' },
+  { from: 'interview_review', to: 'rejection_email',    type: 'branch_no',    label: 'Rejected ✗' },
+  { from: 'offer_letter',     to: 'offer_response',     type: 'forward' },
+  { from: 'offer_response',   to: 'onboarding',         type: 'branch_yes',   label: 'Accepted ✓' },
+  { from: 'offer_response',   to: 'renegotiation',      type: 'branch_no',    label: 'Declined ✗' },
+  { from: 'renegotiation',    to: 'onboarding',          type: 'branch_yes',   label: 'Accepted ✓' },
+  { from: 'renegotiation',    to: 'offer_letter',        type: 'feedback',     label: 'Revised Offer' },
 ]
 
 /* ─── Stage progression order ────────────────────────────── */
 const STAGE_ORDER = [
   'supervisor','planning','jd_generation','human_approval','sourcing',
   'wait_primary','monitoring','jd_optimization','repost','wait_loop',
-  'screening','human_review','interviewing','candidate_selected',
-  'rejection_email','offer_accepted','renegotiation',
+  'screening','human_review','interviewing','interview_review',
+  'offer_letter','offer_response','rejection_email','onboarding','renegotiation',
 ]
 
 /* ─── Status maps ────────────────────────────────────────── */
@@ -528,6 +543,49 @@ export default function WorkflowMonitor() {
     onError: (err: any) => toast.error(err?.response?.data?.detail || 'Failed to retry'),
   })
 
+  const resendInviteMutation = useMutation({
+    mutationFn: (candidateId: string) => interviewsApi.resend(candidateId),
+    onSuccess: (data: any) => {
+      toast.success(data?.message || '✅ Interview link dispatched to candidate email!')
+      qc.invalidateQueries({ queryKey: ['candidates', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-logs', selectedJobId] })
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || err.message || 'Failed to send invitation email'),
+  })
+
+  const resendOfferMutation = useMutation({
+    mutationFn: (candidateId: string) => candidatesApi.resendOffer(candidateId),
+    onSuccess: (data: any) => {
+      toast.success(data?.message || '📄 Offer letter email dispatched to candidate!')
+      qc.invalidateQueries({ queryKey: ['candidates', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-logs', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-status', selectedJobId] })
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || err.message || 'Failed to send offer letter email'),
+  })
+
+  const acceptOfferMutation = useMutation({
+    mutationFn: (candidateId: string) => candidatesApi.acceptOffer(candidateId),
+    onSuccess: () => {
+      toast.success('✅ Candidate accepted offer! Advancing to onboarding.')
+      qc.invalidateQueries({ queryKey: ['candidates', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-status', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-logs', selectedJobId] })
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || err.message || 'Failed to accept offer'),
+  })
+
+  const rejectOfferMutation = useMutation({
+    mutationFn: (candidateId: string) => candidatesApi.rejectOffer(candidateId),
+    onSuccess: () => {
+      toast.success('Offer declined. Advancing to renegotiation.')
+      qc.invalidateQueries({ queryKey: ['candidates', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-status', selectedJobId] })
+      qc.invalidateQueries({ queryKey: ['workflow-logs', selectedJobId] })
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail || err.message || 'Failed to decline offer'),
+  })
+
   useEffect(() => {
     const id = setInterval(() => setDashOffset(v => (v - 1) % 24), 50)
     return () => clearInterval(id)
@@ -607,13 +665,16 @@ export default function WorkflowMonitor() {
       supervisor: 'supervisor', planning: 'planning', jd_generation: 'jd_generation',
       human_approval: 'human_approval', sourcing: 'sourcing', monitoring: 'monitoring',
       screening: 'screening', human_review: 'human_review', interviewing: 'interview',
-      candidate_selected: 'candidate_selected', offer_accepted: 'onboarding',
+      interview_review: 'interview_review', offer_letter: 'offer_letter',
+      offer_response: 'offer_response', onboarding: 'onboarding',
       renegotiation: 'renegotiation', rejection_email: 'rejection_email',
       jd_optimization: 'jd_optimization', repost: 'repost',
       wait_primary: 'wait_primary', wait_loop: 'wait_loop',
     }
     const raw = workflowState.agent_statuses?.[keyMap[id]] || 'idle'
     if (raw === 'threshold_reached' || raw === 'below_threshold') return 'completed'
+    if (raw === 'waiting_candidate') return 'waiting_approval'
+    if (raw === 'accepted' || raw === 'rejected') return 'completed'
     return raw as StageState
   }
 
@@ -638,15 +699,23 @@ export default function WorkflowMonitor() {
     },
     'interviewed': {
       completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing'],
-      running: 'candidate_selected',
+      running: 'interview_review',
     },
     'selected': {
-      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'candidate_selected'],
-      running: 'offer_accepted',
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'interview_review'],
+      running: 'offer_letter',
+    },
+    'offer_sent': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'interview_review', 'offer_letter'],
+      running: 'offer_response',
     },
     'onboarding': {
-      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'candidate_selected', 'offer_accepted'],
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'interview_review', 'offer_letter', 'offer_response', 'onboarding'],
       running: null,
+    },
+    'offer_rejected': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'interview_review', 'offer_letter', 'offer_response'],
+      running: 'renegotiation',
     },
     'rejected': {
       completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'rejection_email'],
@@ -696,11 +765,12 @@ export default function WorkflowMonitor() {
     'Monitoring Agent': 'monitoring',
     'Resume Screening Agent': 'screening',
     'Interview Agent': 'interviewing',
-    'Onboarding Agent': 'offer_accepted',
+    'Human Recruiter': 'interview_review',
+    'Offer Agent': 'offer_letter',
+    'Onboarding Agent': 'onboarding',
     'JD Optimisation Agent': 'jd_optimization',
     'Renegotiation Agent': 'renegotiation',
     'Comms Agent': 'rejection_email',
-    'Offer Agent': 'candidate_selected',
   }
 
   const getLogs = (id: string): AgentLog[] => {
@@ -1390,7 +1460,7 @@ export default function WorkflowMonitor() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                     <div>
                       <div style={{ fontSize: 9, fontWeight: 700, color: '#DC9F85', letterSpacing: '0.12em', textTransform: 'uppercase' }}>
-                        NODE {selectedNode.stepNum} DETAILS
+                        NODE {NODES.findIndex(n => n.id === selectedNode.id) + 1} DETAILS
                       </div>
                       <h3 style={{ fontSize: 16, fontWeight: 700, color: '#EBDCC4', fontFamily: "'Clash Grotesk',sans-serif", marginTop: 2 }}>
                         {selectedNode.title}
@@ -1425,13 +1495,38 @@ export default function WorkflowMonitor() {
                     </div>
                   </div>
 
-                  {/* Recruiter Action Section for Node 12 (Shortlist Validation) / Node 13 */}
-                  {(selectedNode.id === 'human_review' || selectedNode.id === 'interviewing') && (
+                  {/* Recruiter Action Section for Node 12 (Shortlist Validation) — Schedule Interview + Reject only */}
+                  {selectedNode.id === 'human_review' && (
                     <div style={{ borderTop: '1px solid #35211A', paddingTop: 14, marginTop: 4 }}>
                       <div style={{ fontSize: 10, fontWeight: 700, color: '#DC9F85', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                         <UserCheck size={13} color="#DC9F85" />
-                        <span>Recruiter Candidate Approval</span>
+                        <span>Schedule Interview / Reject</span>
                       </div>
+
+                      {/* AI Agent trigger banner if candidates are shortlisted */}
+                      {candidates.some((c: any) => c.status === 'shortlisted') && (
+                        <div style={{
+                          background: 'rgba(220,159,133,0.08)', border: '1px solid rgba(220,159,133,0.25)',
+                          borderRadius: 6, padding: '10px 12px', marginBottom: 12,
+                          display: 'flex', flexDirection: 'column', gap: 8
+                        }}>
+                          <div style={{ fontSize: 11, color: '#EBDCC4', lineHeight: 1.4 }}>
+                            Candidate(s) shortlisted! Let the <strong>AI Interview Agent</strong> auto-schedule interview slots and send Google Meet invitations to their emails.
+                          </div>
+                          <button
+                            disabled={retryMutation.isPending}
+                            onClick={() => retryMutation.mutate()}
+                            style={{
+                              padding: '7px 12px', background: '#DC9F85', color: '#1E1A18',
+                              border: 'none', borderRadius: 4, fontWeight: 700, fontSize: 11,
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                            }}
+                          >
+                            {retryMutation.isPending ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Video size={13} />}
+                            <span>Run AI Interview Agent (Auto-Schedule & Send Links)</span>
+                          </button>
+                        </div>
+                      )}
 
                       {candidates.length === 0 ? (
                         <div style={{ fontSize: 11, color: '#7A6A5E', fontStyle: 'italic' }}>
@@ -1440,102 +1535,94 @@ export default function WorkflowMonitor() {
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                           {candidates.map((c: any) => {
-                            const isShortlisted = c.status === 'shortlisted' || c.status === 'applied'
+                            const isShortlisted = c.status === 'shortlisted' || c.status === 'applied' || c.status === 'screening'
                             const isScheduled = c.status === 'interview_scheduled' || c.status === 'interviewed'
-                            const isSelected = c.status === 'selected' || c.status === 'onboarding'
                             const isRejected = c.status === 'rejected'
 
                             return (
                               <div key={c.id} style={{
                                 padding: '10px 12px', background: '#221D1A',
-                                border: `1px solid ${isSelected ? 'rgba(74,222,128,0.6)' : isScheduled ? 'rgba(74,222,128,0.4)' : isRejected ? 'rgba(239,68,68,0.3)' : isShortlisted ? '#66473B' : '#35211A'}`,
+                                border: `1px solid ${isScheduled ? 'rgba(74,222,128,0.4)' : isRejected ? 'rgba(239,68,68,0.3)' : isShortlisted ? '#66473B' : '#35211A'}`,
                                 borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 6
                               }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                   <div style={{ fontWeight: 600, fontSize: 12, color: '#EBDCC4' }}>{c.name}</div>
                                   <div style={{
                                     fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
-                                    background: isSelected ? 'rgba(74,222,128,0.2)' : isScheduled ? 'rgba(74,222,128,0.15)' : isRejected ? 'rgba(239,68,68,0.15)' : 'rgba(220,159,133,0.15)',
-                                    color: isSelected || isScheduled ? '#4ade80' : isRejected ? '#ef4444' : '#DC9F85',
+                                    background: isScheduled ? 'rgba(74,222,128,0.15)' : isRejected ? 'rgba(239,68,68,0.15)' : 'rgba(220,159,133,0.15)',
+                                    color: isScheduled ? '#4ade80' : isRejected ? '#ef4444' : '#DC9F85',
                                     textTransform: 'uppercase', letterSpacing: '0.05em'
                                   }}>
-                                    {c.status.replace('_', ' ')}
+                                    {c.status.replace(/_/g, ' ')}
                                   </div>
                                 </div>
 
                                 <div style={{ fontSize: 11, color: '#B6A596' }}>{c.email}</div>
 
-                                {/* Action Buttons */}
-                                {!isSelected && !isRejected && (
+                                {/* Only Schedule Interview + Reject for shortlisted candidates */}
+                                {isShortlisted && !isRejected && !isScheduled && (
                                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
-                                    {isShortlisted && (
-                                      <button
-                                        onClick={() => setScheduleModalCandidate({ id: c.id, name: c.name, email: c.email })}
-                                        style={{
-                                          width: '100%', padding: '6px 10px',
-                                          background: '#DC9F85', color: '#1E1A18', border: 'none',
-                                          borderRadius: 4, fontWeight: 700, fontSize: 11,
-                                          cursor: 'pointer', display: 'flex', alignItems: 'center',
-                                          justifyContent: 'center', gap: 6
-                                        }}
-                                      >
-                                        <CheckCircle2 size={13} />
-                                        <span>Schedule Interview Call</span>
-                                      </button>
-                                    )}
+                                    <button
+                                      onClick={() => setScheduleModalCandidate({ id: c.id, name: c.name, email: c.email })}
+                                      style={{
+                                        width: '100%', padding: '6px 10px',
+                                        background: '#DC9F85', color: '#1E1A18', border: 'none',
+                                        borderRadius: 4, fontWeight: 700, fontSize: 11,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', gap: 6
+                                      }}
+                                    >
+                                      <CheckCircle2 size={13} />
+                                      <span>Schedule Interview Call</span>
+                                    </button>
 
-                                    <div style={{ display: 'flex', gap: 6 }}>
-                                      <button
-                                        disabled={selectMutation.isPending || rejectFinalMutation.isPending}
-                                        onClick={() => {
-                                          const note = window.prompt(`Select ${c.name}? Add optional selection note for email:`, 'We are excited to invite you to join our team!')
-                                          if (note !== null) {
-                                            selectMutation.mutate({ id: c.id, selection_note: note })
-                                          }
-                                        }}
-                                        style={{
-                                          flex: 1, padding: '6px 8px',
-                                          background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)',
-                                          borderRadius: 4, color: '#4ade80', fontWeight: 700, fontSize: 10.5,
-                                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
-                                        }}
-                                      >
-                                        {selectMutation.isPending && selectMutation.variables?.id === c.id ? (
-                                          <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
-                                        ) : (
-                                          <span>🎉 Select & Send Link</span>
-                                        )}
-                                      </button>
-
-                                      <button
-                                        disabled={selectMutation.isPending || rejectFinalMutation.isPending}
-                                        onClick={() => {
-                                          const reason = window.prompt(`Reject ${c.name}? Add optional rejection note for email:`, 'Qualifications did not closely match current requirement.')
-                                          if (reason !== null) {
-                                            rejectFinalMutation.mutate({ id: c.id, reason })
-                                          }
-                                        }}
-                                        style={{
-                                          flex: 1, padding: '6px 8px',
-                                          background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
-                                          borderRadius: 4, color: '#ef4444', fontWeight: 700, fontSize: 10.5,
-                                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
-                                        }}
-                                      >
-                                        {rejectFinalMutation.isPending && rejectFinalMutation.variables?.id === c.id ? (
-                                          <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
-                                        ) : (
-                                          <span>❌ Reject Candidate</span>
-                                        )}
-                                      </button>
-                                    </div>
+                                    <button
+                                      disabled={rejectFinalMutation.isPending}
+                                      onClick={() => {
+                                        const reason = window.prompt(`Reject ${c.name}? Add optional rejection note for email:`, 'Qualifications did not closely match current requirement.')
+                                        if (reason !== null) {
+                                          rejectFinalMutation.mutate({ id: c.id, reason })
+                                        }
+                                      }}
+                                      style={{
+                                        width: '100%', padding: '6px 10px',
+                                        background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
+                                        borderRadius: 4, color: '#ef4444', fontWeight: 700, fontSize: 10.5,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+                                      }}
+                                    >
+                                      {rejectFinalMutation.isPending && rejectFinalMutation.variables?.id === c.id ? (
+                                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                      ) : (
+                                        <span>❌ Reject Candidate</span>
+                                      )}
+                                    </button>
                                   </div>
                                 )}
 
-                                {isSelected && (
-                                  <div style={{ fontSize: 10, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                                    <CheckCircle2 size={12} />
-                                    <span>SELECTED — Google Meet & Offer Email Dispatched</span>
+                                {isScheduled && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                                    <div style={{ fontSize: 10, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                      <CheckCircle2 size={12} />
+                                      <span>Interview {c.status === 'interviewed' ? 'Completed' : 'Scheduled'}</span>
+                                    </div>
+                                    <button
+                                      disabled={resendInviteMutation.isPending}
+                                      onClick={() => resendInviteMutation.mutate(c.id)}
+                                      style={{
+                                        width: '100%', padding: '5px 8px', background: 'rgba(5,150,105,0.15)',
+                                        border: '1px solid rgba(5,150,105,0.3)', borderRadius: 4,
+                                        color: '#34d399', fontWeight: 600, fontSize: 10.5, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5
+                                      }}
+                                    >
+                                      {resendInviteMutation.isPending && resendInviteMutation.variables === c.id ? (
+                                        <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+                                      ) : (
+                                        <Mail size={11} />
+                                      )}
+                                      <span>📧 Resend Meet Link to Email</span>
+                                    </button>
                                   </div>
                                 )}
 
@@ -1548,6 +1635,432 @@ export default function WorkflowMonitor() {
                               </div>
                             )
                           })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Recruiter Action Section for Node 13 (Interview Coordination) */}
+                  {selectedNode.id === 'interviewing' && (
+                    <div style={{ borderTop: '1px solid #35211A', paddingTop: 14, marginTop: 4 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#DC9F85', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <Video size={13} color="#DC9F85" />
+                        <span>Interview Coordination (Interview Agent)</span>
+                      </div>
+
+                      <div style={{ fontSize: 11, color: '#B6A596', marginBottom: 12, lineHeight: 1.4 }}>
+                        The AI Interview Agent generates Google Meet video links and dispatches interview invitation emails directly to candidates.
+                      </div>
+
+                      {/* Run/re-run agent button */}
+                      <div style={{ marginBottom: 12 }}>
+                        <button
+                          disabled={retryMutation.isPending}
+                          onClick={() => retryMutation.mutate()}
+                          style={{
+                            width: '100%', padding: '7px 12px', background: '#DC9F85', color: '#1E1A18',
+                            border: 'none', borderRadius: 4, fontWeight: 700, fontSize: 11,
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6
+                          }}
+                        >
+                          {retryMutation.isPending ? <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} /> : <Video size={13} />}
+                          <span>Coordinate & Send Interview Links (AI Agent)</span>
+                        </button>
+                      </div>
+
+                      {candidates.length === 0 ? (
+                        <div style={{ fontSize: 11, color: '#7A6A5E', fontStyle: 'italic' }}>
+                          No candidates found for this job yet.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {candidates.map((c: any) => {
+                            const isScheduled = c.status === 'interview_scheduled' || c.status === 'interviewed'
+                            const isSelected = c.status === 'selected' || c.status === 'offer_sent' || c.status === 'onboarding'
+                            const isShortlisted = c.status === 'shortlisted' || c.status === 'screening' || c.status === 'applied'
+
+                            return (
+                              <div key={c.id} style={{
+                                padding: '10px 12px', background: '#221D1A',
+                                border: `1px solid ${isScheduled || isSelected ? 'rgba(74,222,128,0.4)' : '#35211A'}`,
+                                borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 6
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ fontWeight: 600, fontSize: 12, color: '#EBDCC4' }}>{c.name}</div>
+                                  <div style={{
+                                    fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                    background: isScheduled || isSelected ? 'rgba(74,222,128,0.15)' : 'rgba(220,159,133,0.15)',
+                                    color: isScheduled || isSelected ? '#4ade80' : '#DC9F85',
+                                    textTransform: 'uppercase', letterSpacing: '0.05em'
+                                  }}>
+                                    {c.status.replace(/_/g, ' ')}
+                                  </div>
+                                </div>
+
+                                <div style={{ fontSize: 11, color: '#B6A596' }}>{c.email}</div>
+
+                                {/* Scheduled actions */}
+                                {(isScheduled || isSelected) && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                                    <button
+                                      disabled={resendInviteMutation.isPending}
+                                      onClick={() => resendInviteMutation.mutate(c.id)}
+                                      style={{
+                                        width: '100%', padding: '6px 10px',
+                                        background: 'rgba(5,150,105,0.15)', border: '1px solid rgba(5,150,105,0.35)',
+                                        borderRadius: 4, color: '#34d399', fontWeight: 700, fontSize: 11,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', gap: 6
+                                      }}
+                                    >
+                                      {resendInviteMutation.isPending && resendInviteMutation.variables === c.id ? (
+                                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                      ) : (
+                                        <Mail size={12} />
+                                      )}
+                                      <span>📧 Resend Google Meet Link to Candidate</span>
+                                    </button>
+                                  </div>
+                                )}
+
+                                {/* Shortlisted but not yet scheduled */}
+                                {isShortlisted && !isScheduled && !isSelected && c.status !== 'rejected' && (
+                                  <div style={{ marginTop: 4 }}>
+                                    <button
+                                      onClick={() => setScheduleModalCandidate({ id: c.id, name: c.name, email: c.email })}
+                                      style={{
+                                        width: '100%', padding: '6px 10px',
+                                        background: '#DC9F85', color: '#1E1A18', border: 'none',
+                                        borderRadius: 4, fontWeight: 700, fontSize: 11,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                        justifyContent: 'center', gap: 6
+                                      }}
+                                    >
+                                      <CheckCircle2 size={13} />
+                                      <span>Schedule Interview Now</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Recruiter Action Section for Interview Review — Select for Offer + Reject */}
+                  {selectedNode.id === 'interview_review' && (
+                    <div style={{ borderTop: '1px solid #35211A', paddingTop: 14, marginTop: 4 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#DC9F85', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <UserCheck size={13} color="#DC9F85" />
+                        <span>Post-Interview Selection</span>
+                      </div>
+
+                      {candidates.length === 0 ? (
+                        <div style={{ fontSize: 11, color: '#7A6A5E', fontStyle: 'italic' }}>
+                          No candidates found for this job yet.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {candidates.map((c: any) => {
+                            const isInterviewed = c.status === 'interviewed'
+                            const isSelected = c.status === 'selected' || c.status === 'offer_sent' || c.status === 'onboarding'
+                            const isRejected = c.status === 'rejected'
+                            const isOfferRejected = c.status === 'offer_rejected'
+
+                            return (
+                              <div key={c.id} style={{
+                                padding: '10px 12px', background: '#221D1A',
+                                border: `1px solid ${isSelected ? 'rgba(74,222,128,0.6)' : isRejected ? 'rgba(239,68,68,0.3)' : isOfferRejected ? 'rgba(251,191,36,0.3)' : isInterviewed ? '#66473B' : '#35211A'}`,
+                                borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 6
+                              }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <div style={{ fontWeight: 600, fontSize: 12, color: '#EBDCC4' }}>{c.name}</div>
+                                  <div style={{
+                                    fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                    background: isSelected ? 'rgba(74,222,128,0.2)' : isRejected ? 'rgba(239,68,68,0.15)' : isOfferRejected ? 'rgba(251,191,36,0.15)' : 'rgba(220,159,133,0.15)',
+                                    color: isSelected ? '#4ade80' : isRejected ? '#ef4444' : isOfferRejected ? '#fbbf24' : '#DC9F85',
+                                    textTransform: 'uppercase', letterSpacing: '0.05em'
+                                  }}>
+                                    {c.status.replace(/_/g, ' ')}
+                                  </div>
+                                </div>
+
+                                <div style={{ fontSize: 11, color: '#B6A596' }}>{c.email}</div>
+
+                                {/* Select for Offer + Reject — only for interviewed candidates */}
+                                {isInterviewed && (
+                                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                                    <button
+                                      disabled={selectMutation.isPending || rejectFinalMutation.isPending}
+                                      onClick={() => {
+                                        const note = window.prompt(`Select ${c.name} for offer letter? Add optional note:`, 'Excellent interview performance!')
+                                        if (note !== null) {
+                                          selectMutation.mutate({ id: c.id, selection_note: note })
+                                        }
+                                      }}
+                                      style={{
+                                        flex: 1, padding: '6px 8px',
+                                        background: 'rgba(74,222,128,0.12)', border: '1px solid rgba(74,222,128,0.3)',
+                                        borderRadius: 4, color: '#4ade80', fontWeight: 700, fontSize: 10.5,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+                                      }}
+                                    >
+                                      {selectMutation.isPending && selectMutation.variables?.id === c.id ? (
+                                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                      ) : (
+                                        <span>🎉 Select for Offer</span>
+                                      )}
+                                    </button>
+
+                                    <button
+                                      disabled={selectMutation.isPending || rejectFinalMutation.isPending}
+                                      onClick={() => {
+                                        const reason = window.prompt(`Reject ${c.name}? Add optional rejection note:`, 'Did not meet interview criteria.')
+                                        if (reason !== null) {
+                                          rejectFinalMutation.mutate({ id: c.id, reason })
+                                        }
+                                      }}
+                                      style={{
+                                        flex: 1, padding: '6px 8px',
+                                        background: 'rgba(239,68,68,0.12)', border: '1px solid rgba(239,68,68,0.3)',
+                                        borderRadius: 4, color: '#ef4444', fontWeight: 700, fontSize: 10.5,
+                                        cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+                                      }}
+                                    >
+                                      {rejectFinalMutation.isPending && rejectFinalMutation.variables?.id === c.id ? (
+                                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                      ) : (
+                                        <span>❌ Reject</span>
+                                      )}
+                                    </button>
+                                  </div>
+                                )}
+
+                                {isSelected && (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                                    <div style={{ fontSize: 10, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                      <CheckCircle2 size={12} />
+                                      <span>SELECTED — Offer Letter {c.status === 'offer_sent' ? 'Dispatched' : 'Being Generated'}</span>
+                                    </div>
+                                    <button
+                                      disabled={resendOfferMutation.isPending}
+                                      onClick={() => resendOfferMutation.mutate(c.id)}
+                                      style={{
+                                        width: '100%', padding: '5px 8px', background: 'rgba(37,99,235,0.15)',
+                                        border: '1px solid rgba(37,99,235,0.35)', borderRadius: 4,
+                                        color: '#60a5fa', fontWeight: 600, fontSize: 10.5, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5
+                                      }}
+                                    >
+                                      {resendOfferMutation.isPending && resendOfferMutation.variables === c.id ? (
+                                        <Loader2 size={11} style={{ animation: 'spin 1s linear infinite' }} />
+                                      ) : (
+                                        <FileText size={11} />
+                                      )}
+                                      <span>📄 Resend Offer Letter to Email</span>
+                                    </button>
+                                  </div>
+                                )}
+
+                                {isRejected && (
+                                  <div style={{ fontSize: 10, color: '#ef4444', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                    <XCircle size={12} />
+                                    <span>REJECTED — Rejection Notice Sent</span>
+                                  </div>
+                                )}
+
+                                {isOfferRejected && (
+                                  <div style={{ fontSize: 10, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                    <ArrowRightLeft size={12} />
+                                    <span>OFFER DECLINED — Renegotiation in Progress</span>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Recruiter Action Section for Node 15 (Offer Letter Generation) */}
+                  {selectedNode.id === 'offer_letter' && (
+                    <div style={{ borderTop: '1px solid #35211A', paddingTop: 14, marginTop: 4 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#DC9F85', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <FileText size={13} color="#DC9F85" />
+                        <span>Offer Letter Generation (Offer Agent)</span>
+                      </div>
+
+                      <div style={{ fontSize: 11, color: '#B6A596', marginBottom: 12, lineHeight: 1.4 }}>
+                        The AI Offer Agent generates a formal offer letter with compensation, benefits, and Accept/Decline options, then dispatches it to the candidate's email.
+                      </div>
+
+                      {candidates.filter((c: any) => c.status === 'selected' || c.status === 'offer_sent' || c.status === 'onboarding' || c.status === 'offer_rejected').length === 0 ? (
+                        <div style={{ fontSize: 11, color: '#7A6A5E', fontStyle: 'italic' }}>
+                          No candidates selected for an offer yet. Complete Node 14 (Interview Review) first.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {candidates.filter((c: any) => c.status === 'selected' || c.status === 'offer_sent' || c.status === 'onboarding' || c.status === 'offer_rejected').map((c: any) => (
+                            <div key={c.id} style={{
+                              padding: '10px 12px', background: '#221D1A',
+                              border: '1px solid rgba(74,222,128,0.4)', borderRadius: 6,
+                              display: 'flex', flexDirection: 'column', gap: 6
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ fontWeight: 600, fontSize: 12, color: '#EBDCC4' }}>{c.name}</div>
+                                <div style={{
+                                  fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                  background: 'rgba(74,222,128,0.15)', color: '#4ade80',
+                                  textTransform: 'uppercase', letterSpacing: '0.05em'
+                                }}>
+                                  {c.status.replace(/_/g, ' ')}
+                                </div>
+                              </div>
+
+                              <div style={{ fontSize: 11, color: '#B6A596' }}>{c.email}</div>
+
+                              <div style={{ fontSize: 10, color: '#34d399', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                <CheckCircle2 size={12} />
+                                <span>Official Offer Letter Dispatched via Email</span>
+                              </div>
+
+                              <button
+                                disabled={resendOfferMutation.isPending}
+                                onClick={() => resendOfferMutation.mutate(c.id)}
+                                style={{
+                                  width: '100%', padding: '6px 10px', marginTop: 4,
+                                  background: 'rgba(37,99,235,0.15)', border: '1px solid rgba(37,99,235,0.35)',
+                                  borderRadius: 4, color: '#60a5fa', fontWeight: 700, fontSize: 11,
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center',
+                                  justifyContent: 'center', gap: 6
+                                }}
+                              >
+                                {resendOfferMutation.isPending && resendOfferMutation.variables === c.id ? (
+                                  <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                ) : (
+                                  <FileText size={12} />
+                                )}
+                                <span>📄 Resend Offer Letter Email</span>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Recruiter Action Section for Node 16 (Candidate Response) */}
+                  {selectedNode.id === 'offer_response' && (
+                    <div style={{ borderTop: '1px solid #35211A', paddingTop: 14, marginTop: 4 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#DC9F85', letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <ArrowRightLeft size={13} color="#DC9F85" />
+                        <span>Candidate Offer Response</span>
+                      </div>
+
+                      <div style={{ fontSize: 11, color: '#B6A596', marginBottom: 12, lineHeight: 1.4 }}>
+                        Awaiting candidate action from the email link. When the candidate clicks Accept, the pipeline proceeds to Onboarding. If declined, it enters Renegotiation.
+                      </div>
+
+                      {candidates.filter((c: any) => c.status === 'offer_sent' || c.status === 'onboarding' || c.status === 'offer_rejected').length === 0 ? (
+                        <div style={{ fontSize: 11, color: '#7A6A5E', fontStyle: 'italic' }}>
+                          No candidates currently awaiting offer response.
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                          {candidates.filter((c: any) => c.status === 'offer_sent' || c.status === 'onboarding' || c.status === 'offer_rejected').map((c: any) => (
+                            <div key={c.id} style={{
+                              padding: '10px 12px', background: '#221D1A',
+                              border: `1px solid ${c.status === 'onboarding' ? 'rgba(74,222,128,0.5)' : c.status === 'offer_rejected' ? 'rgba(251,191,36,0.5)' : '#66473B'}`,
+                              borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 6
+                            }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div style={{ fontWeight: 600, fontSize: 12, color: '#EBDCC4' }}>{c.name}</div>
+                                <div style={{
+                                  fontSize: 9, fontWeight: 700, padding: '2px 6px', borderRadius: 4,
+                                  background: c.status === 'onboarding' ? 'rgba(74,222,128,0.15)' : c.status === 'offer_rejected' ? 'rgba(251,191,36,0.15)' : 'rgba(220,159,133,0.15)',
+                                  color: c.status === 'onboarding' ? '#4ade80' : c.status === 'offer_rejected' ? '#fbbf24' : '#DC9F85',
+                                  textTransform: 'uppercase', letterSpacing: '0.05em'
+                                }}>
+                                  {c.status.replace(/_/g, ' ')}
+                                </div>
+                              </div>
+
+                              <div style={{ fontSize: 11, color: '#B6A596' }}>{c.email}</div>
+
+                              {c.status === 'offer_sent' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 4 }}>
+                                  <div style={{ fontSize: 10, color: '#DC9F85', fontStyle: 'italic' }}>
+                                    Waiting for candidate to click Accept or Decline in their email...
+                                  </div>
+                                  <div style={{ display: 'flex', gap: 6 }}>
+                                    <button
+                                      disabled={acceptOfferMutation.isPending}
+                                      onClick={() => acceptOfferMutation.mutate(c.id)}
+                                      style={{
+                                        flex: 1, padding: '6px 8px', background: 'rgba(74,222,128,0.12)',
+                                        border: '1px solid rgba(74,222,128,0.3)', borderRadius: 4,
+                                        color: '#4ade80', fontWeight: 700, fontSize: 10.5, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+                                      }}
+                                    >
+                                      {acceptOfferMutation.isPending && acceptOfferMutation.variables === c.id ? (
+                                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                      ) : (
+                                        <span>✅ Simulate Accept</span>
+                                      )}
+                                    </button>
+                                    <button
+                                      disabled={rejectOfferMutation.isPending}
+                                      onClick={() => rejectOfferMutation.mutate(c.id)}
+                                      style={{
+                                        flex: 1, padding: '6px 8px', background: 'rgba(251,191,36,0.12)',
+                                        border: '1px solid rgba(251,191,36,0.3)', borderRadius: 4,
+                                        color: '#fbbf24', fontWeight: 700, fontSize: 10.5, cursor: 'pointer',
+                                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+                                      }}
+                                    >
+                                      {rejectOfferMutation.isPending && rejectOfferMutation.variables === c.id ? (
+                                        <Loader2 size={12} style={{ animation: 'spin 1s linear infinite' }} />
+                                      ) : (
+                                        <span>❌ Simulate Decline</span>
+                                      )}
+                                    </button>
+                                  </div>
+
+                                  <button
+                                    disabled={resendOfferMutation.isPending}
+                                    onClick={() => resendOfferMutation.mutate(c.id)}
+                                    style={{
+                                      width: '100%', padding: '5px 8px', background: 'rgba(37,99,235,0.12)',
+                                      border: '1px solid rgba(37,99,235,0.3)', borderRadius: 4,
+                                      color: '#60a5fa', fontWeight: 600, fontSize: 10.5, cursor: 'pointer',
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+                                    }}
+                                  >
+                                    <FileText size={11} />
+                                    <span>Resend Offer Email</span>
+                                  </button>
+                                </div>
+                              )}
+
+                              {c.status === 'onboarding' && (
+                                <div style={{ fontSize: 10, color: '#4ade80', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                  <CheckCircle2 size={12} />
+                                  <span>Offer Accepted! Proceeding with Onboarding.</span>
+                                </div>
+                              )}
+
+                              {c.status === 'offer_rejected' && (
+                                <div style={{ fontSize: 10, color: '#fbbf24', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                                  <ArrowRightLeft size={12} />
+                                  <span>Offer Declined — Proceeding with Renegotiation.</span>
+                                </div>
+                              )}
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>

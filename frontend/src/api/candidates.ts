@@ -25,6 +25,18 @@ export const candidatesApi = {
     const res = await apiClient.post(`/candidates/${id}/reject-final`, payload || {});
     return res.data;
   },
+  resendOffer: async (id: string) => {
+    const res = await apiClient.post(`/candidates/${id}/resend-offer`);
+    return res.data;
+  },
+  acceptOffer: async (id: string) => {
+    const res = await apiClient.post(`/candidates/${id}/offer-accept`);
+    return res.data;
+  },
+  rejectOffer: async (id: string) => {
+    const res = await apiClient.post(`/candidates/${id}/offer-reject`);
+    return res.data;
+  },
 };
 
 export const interviewsApi = {
@@ -45,6 +57,10 @@ export const interviewsApi = {
   },
   updateStatus: async (id: string, status: string) => {
     const res = await apiClient.patch(`/interviews/${id}/status`, null, { params: { status } });
+    return res.data;
+  },
+  resend: async (candidateId: string) => {
+    const res = await apiClient.post(`/interviews/${candidateId}/resend`);
     return res.data;
   },
 };

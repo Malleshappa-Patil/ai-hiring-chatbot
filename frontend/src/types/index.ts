@@ -76,7 +76,7 @@ export interface CreateJobRequest {
 }
 
 // ── Candidates ───────────────────────────────────────────────────
-export type CandidateStatus = 'applied' | 'screening' | 'shortlisted' | 'interview_scheduled' | 'interviewed' | 'selected' | 'rejected' | 'onboarding'
+export type CandidateStatus = 'applied' | 'screening' | 'shortlisted' | 'interview_scheduled' | 'interviewed' | 'selected' | 'offer_sent' | 'offer_rejected' | 'rejected' | 'onboarding'
 export type MatchCategory = 'strong_match' | 'partial_match' | 'weak_match'
 
 export interface Candidate {

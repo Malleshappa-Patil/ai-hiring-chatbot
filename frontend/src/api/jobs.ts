@@ -28,5 +28,9 @@ export const jobsApi = {
   delete: async (jobId: string) => {
     const res = await apiClient.delete(`/jobs/${jobId}`);
     return res.data;
-  }
+  },
+  startInterviews: async (jobId: string) => {
+    const res = await apiClient.post(`/jobs/${jobId}/start-interviews`);
+    return res.data;
+  },
 };
