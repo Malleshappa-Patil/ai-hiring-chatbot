@@ -33,7 +33,7 @@ A conversational **AI Chatbot** (powered by Google Gemini) guides recruiters thr
 11. Manages offer negotiation & renegotiation
 12. Triggers onboarding workflow
 13. Maintains hiring analytics
-
+ 
 ---
 
 ## 🏗️ Architecture
