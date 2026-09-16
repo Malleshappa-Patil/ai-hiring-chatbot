@@ -11,6 +11,8 @@ Step 13 — Conduct Interview Agent:
 - Candidate scoring and selection decision
 """
 import random
+import json
+import re
 from datetime import datetime, timedelta
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage
@@ -43,14 +45,16 @@ Evaluate based on:
 4. Culture Fit (0-10 points): Team collaboration potential
 5. Leadership/Initiative (0-10 points): Self-driven, proactive
 
-Provide evaluation in JSON:
+IMPORTANT: Return ONLY a valid JSON object with no markdown fences and no extra text.
+The "verdict" field MUST be exactly "Selected" or "Rejected" — no other values allowed.
+
 {{
   "technical_score": <0-40>,
   "problem_solving_score": <0-20>,
   "communication_score": <0-20>,
   "culture_fit_score": <0-10>,
   "leadership_score": <0-10>,
-  "total_score": <0-100>,
+  "total_score": <0-100, sum of all scores>,
   "verdict": "Selected" or "Rejected",
   "key_observations": ["<observation1>", "<observation2>", "<observation3>"],
   "interviewer_notes": "<2-3 sentence summary>",
@@ -127,20 +131,24 @@ def interview_conduct_node(state: HiringState) -> dict:
                 screening_score=candidate.get("score", 50),
             )
             response = llm.invoke(prompt)
-            
-            import json, re
-            json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
-            if json_match:
-                evaluation = json.loads(json_match.group())
-            else:
-                evaluation = {
-                    "total_score": random.randint(50, 90),
-                    "verdict": random.choice(["Selected", "Rejected"]),
-                    "key_observations": ["Good technical knowledge"],
-                    "interviewer_notes": "Candidate showed good potential.",
-                    "strengths": ["Communication", "Technical skills"],
-                    "concerns": []
-                }
+            # Strip markdown fences before parsing (same approach as screening.py)
+            raw = response.content.strip()
+            if raw.startswith("```"):
+                parts = raw.split("```")
+                raw = parts[1] if len(parts) > 1 else raw
+                if raw.startswith("json"):
+                    raw = raw[4:]
+            evaluation = json.loads(raw.strip())
+        except (json.JSONDecodeError, ValueError) as e:
+            print(f"  [Interview] JSON parse error for {candidate.get('name')}: {e}")
+            evaluation = {
+                "total_score": random.randint(50, 90),
+                "verdict": random.choice(["Selected", "Rejected"]),
+                "key_observations": ["Good technical knowledge"],
+                "interviewer_notes": "Candidate showed good potential.",
+                "strengths": ["Communication", "Technical skills"],
+                "concerns": []
+            }
         except Exception as e:
             print(f"  [Interview] Error evaluating {candidate.get('name')}: {e}")
             evaluation = {
@@ -177,6 +185,6 @@ def interview_conduct_node(state: HiringState) -> dict:
         "interview_results": interview_results,
         "selected_candidates": selected,
         "data": {"rejected_candidates": rejected},
-        "agent_statuses": {"interview": "completed"},
+        "agent_statuses": {"interview_conduct": "completed"},
         "next_action": "communication" if rejected else "offer_management",
     }
