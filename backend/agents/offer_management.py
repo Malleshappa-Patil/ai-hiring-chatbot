@@ -3,8 +3,10 @@ Offer Management Agent — Step 15B from agentic-workflow.md.
 Generates personalized offer letters and sends them to selected candidates.
 Tracks acceptance/rejection status.
 """
+import random
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage
+from datetime import datetime, timedelta
 from backend.config import settings
 from backend.workflows.state import HiringState
 
@@ -89,12 +91,10 @@ def offer_management_node(state: HiringState) -> dict:
             "candidate_name": candidate_name,
             "job_title": job_title,
             "offer_content": offer_content,
-            "sent_at": __import__("datetime").datetime.utcnow().isoformat(),
-            "acceptance_deadline": (__import__("datetime").datetime.utcnow() + 
-                                   __import__("datetime").timedelta(days=7)).isoformat(),
+            "sent_at": datetime.utcnow().isoformat(),
+            "acceptance_deadline": (datetime.utcnow() + timedelta(days=7)).isoformat(),
         }
         # Mock: candidate has 70% chance of accepting on first offer
-        import random
         initial_response = random.choices(
             ["accepted", "rejected", "renegotiating"],
             weights=[0.65, 0.10, 0.25]
