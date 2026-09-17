@@ -143,8 +143,8 @@ def renegotiation_node(state: HiringState) -> dict:
         next_action = "end"  # All rejected after negotiation
 
     return {
-        "offer_status": updated_status,
-        "negotiation_rounds": updated_rounds,
+        "offer_status": final_offer_status,   # Full merged status — preserves all candidates
+        "negotiation_rounds": final_rounds,
         "data": {
             "negotiation_responses": negotiation_responses,
             "accepted_candidates": accepted_candidates,
