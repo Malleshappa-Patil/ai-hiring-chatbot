@@ -74,7 +74,7 @@ def sourcing_node(state: HiringState) -> dict:
 
     return {
         "posting_status": posting_results,
-        "shortlisted_candidates": candidates,
+        "data": {"real_candidates": candidates},   # Screening agent reads from data["real_candidates"]
         "application_count": len(candidates),
         "agent_statuses": {"sourcing": "completed"},
         "next_action": "monitoring",

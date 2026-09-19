@@ -54,12 +54,6 @@ Category rules:
 """
 
 
-llm = ChatGoogleGenerativeAI(
-    model=settings.GEMINI_MODEL,
-    temperature=0.1,
-    google_api_key=settings.GOOGLE_API_KEY
-)
-
 
 def _parse_gemini_json(raw: str) -> dict:
     """Strip markdown fences and parse JSON from Gemini response."""

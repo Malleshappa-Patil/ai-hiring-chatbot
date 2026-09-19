@@ -160,7 +160,7 @@ const NODES: NodeDef[] = [
   },
   {
     id: 'rejection_email', title: 'Rejection Notification', shortTitle: 'Rejection Email',
-    agentName: 'Comms Agent', agentType: 'ai', icon: XCircle, col: 3, row: 4,
+    agentName: 'Comms Agent', agentType: 'ai', icon: XCircle, col: 4, row: 3,
     description: 'Sends personalised regret email to non-selected candidates.',
     subSteps: ['Generate regret email', 'Send via email service', 'Update candidate status'],
   },
@@ -664,8 +664,10 @@ export default function WorkflowMonitor() {
     const keyMap: Record<string, string> = {
       supervisor: 'supervisor', planning: 'planning', jd_generation: 'jd_generation',
       human_approval: 'human_approval', sourcing: 'sourcing', monitoring: 'monitoring',
-      screening: 'screening', human_review: 'human_review', interviewing: 'interview',
-      interview_review: 'interview_review', offer_letter: 'offer_letter',
+      screening: 'screening', human_review: 'human_review',
+      interviewing: 'interview_scheduling',      // matches agent_statuses key from interview_scheduling_node
+      interview_review: 'interview_conduct',     // matches agent_statuses key from interview_conduct_node (but backend logs as 'interview')
+      offer_letter: 'offer_letter',
       offer_response: 'offer_response', onboarding: 'onboarding',
       renegotiation: 'renegotiation', rejection_email: 'rejection_email',
       jd_optimization: 'jd_optimization', repost: 'repost',
@@ -716,6 +718,10 @@ export default function WorkflowMonitor() {
     'offer_rejected': {
       completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'interview_review', 'offer_letter', 'offer_response'],
       running: 'renegotiation',
+    },
+    'offer_accepted': {
+      completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'interview_review', 'offer_letter', 'offer_response'],
+      running: 'onboarding',
     },
     'rejected': {
       completed: ['supervisor', 'planning', 'jd_generation', 'human_approval', 'sourcing', 'wait_primary', 'monitoring', 'screening', 'human_review', 'interviewing', 'rejection_email'],

@@ -94,8 +94,22 @@ def supervisor_node(state: HiringState) -> dict:
         ])
         next_action = response.content.strip().lower()
     except Exception as e:
-        next_action = "end"
-        print(f"[Supervisor] LLM error: {e}")
+        print(f"[Supervisor] LLM error: {e} — using deterministic fallback routing")
+        # Deterministic fallback: inspect state directly to avoid silent workflow termination
+        if not state.get("jd_content"):
+            next_action = "jd_generation"
+        elif not state.get("jd_approved"):
+            next_action = "jd_generation"
+        elif not state.get("posting_status"):
+            next_action = "sourcing"
+        elif not state.get("shortlisted_candidates"):
+            next_action = "monitoring"
+        elif not state.get("selected_candidates"):
+            next_action = "screening"
+        elif not state.get("offer_status"):
+            next_action = "offer_management"
+        else:
+            next_action = "onboarding"
 
     valid_actions = [
         "jd_generation", "sourcing", "monitoring", "jd_optimization",
