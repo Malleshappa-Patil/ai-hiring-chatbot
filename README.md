@@ -15,7 +15,7 @@ A production-grade Enterprise Multi-Agent Recruitment Automation Platform that a
 - Integrates with external tools
 - Maintains short-term and long-term memory
 - Keeps humans involved only at critical approval checkpoints
-
+ 
 A conversational **AI Chatbot** (powered by Google Gemini) guides recruiters through hiring-request collection and then triggers the autonomous agentic workflow.
 
 **The system automatically:**
