@@ -12,7 +12,7 @@ A production-grade Enterprise Multi-Agent Recruitment Automation Platform that a
 - Understands a high-level hiring goal
 - Creates an execution plan
 - Coordinates multiple specialized agents
-- Integrates with external tools
+- Integrates with external tools 
 - Maintains short-term and long-term memory
 - Keeps humans involved only at critical approval checkpoints
  
